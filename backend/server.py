@@ -36,8 +36,8 @@ if index_name not in pc.list_indexes().names():
         dimension=768,
         metric='cosine',
         spec=ServerlessSpec(
-            cloud='gcp',
-            region='us-east1'
+            cloud='aws',
+            region='us-east-1'
         )
     )
 
