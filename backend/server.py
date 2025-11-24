@@ -398,9 +398,6 @@ async def search_recipes(query: SearchQuery):
     
     results = []
     
-    # Generate explanations in batch using Gemini
-    model = genai.GenerativeModel('gemini-2.0-flash')
-    
     for match in search_results['matches']:
         # Get full recipe from MongoDB
         recipe_doc = await db.recipes.find_one({"id": match['id']})
