@@ -398,6 +398,9 @@ async def search_recipes(query: SearchQuery):
     
     results = []
     
+    # Generate explanations in batch using Gemini
+    model = genai.GenerativeModel('gemini-2.0-flash')
+    
     for match in search_results['matches']:
         # Get full recipe from MongoDB
         recipe_doc = await db.recipes.find_one({"id": match['id']})
@@ -405,23 +408,40 @@ async def search_recipes(query: SearchQuery):
             recipe_doc.pop('_id', None)
             recipe = Recipe(**recipe_doc)
             
-            # Generate match explanation using Gemini
-            model = genai.GenerativeModel('gemini-2.0-flash')
-            explanation_prompt = f"""
-            User is searching for: "{query.query}"
+            # Generate simple rule-based explanation to avoid API rate limits
+            explanation_parts = []
             
-            Recipe found: {recipe.name}
-            Cuisine: {recipe.cuisine_type}
-            Ingredients: {', '.join(recipe.ingredients[:5])}...
-            Nutrition: {recipe.estimated_calories} cal, {recipe.estimated_protein}g protein
-            Spice: {recipe.spice_level}
-            Tags: {', '.join(recipe.dietary_tags)}
+            query_lower = query.query.lower()
             
-            In 1-2 sentences, explain why this recipe matches the user's search. Be specific about nutrition, ingredients, or dietary needs.
-            """
+            # Check protein
+            if 'high protein' in query_lower or 'protein' in query_lower:
+                if recipe.estimated_protein and recipe.estimated_protein > 20:
+                    explanation_parts.append(f"High protein content ({recipe.estimated_protein}g)")
             
-            response = model.generate_content(explanation_prompt)
-            explanation = response.text.strip()
+            # Check carbs
+            if 'low carb' in query_lower:
+                if recipe.estimated_carbs and recipe.estimated_carbs < 30:
+                    explanation_parts.append(f"Low in carbs ({recipe.estimated_carbs}g)")
+            
+            # Check calories
+            if 'calories' in query_lower:
+                explanation_parts.append(f"Contains {recipe.estimated_calories} calories")
+            
+            # Check dietary tags
+            if 'vegetarian' in query_lower or 'vegan' in query_lower:
+                if recipe.dietary_tags:
+                    explanation_parts.append(f"Dietary: {', '.join(recipe.dietary_tags)}")
+            
+            # Check spice
+            if 'spicy' in query_lower:
+                explanation_parts.append(f"Spice level: {recipe.spice_level}")
+            
+            # Default explanation
+            if not explanation_parts:
+                explanation_parts.append(f"This {recipe.cuisine_type} dish matches your search criteria")
+                explanation_parts.append(f"with {recipe.estimated_calories} calories and {recipe.estimated_protein}g protein")
+            
+            explanation = ". ".join(explanation_parts) + "."
             
             results.append(SearchResult(
                 recipe=recipe,
