@@ -1,11 +1,15 @@
+/**
+ * Home page - main entry point for NIMA application
+ */
+
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Search, Sparkles, ChefHat, Flame, Apple, Clock } from "lucide-react";
+import { Sparkles, ChefHat, Search, Apple } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Toaster, toast } from "sonner";
+import { SearchBar } from "@/components/SearchBar";
+import { RecipeCard } from "@/components/RecipeCard";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -17,11 +21,22 @@ const HomePage = () => {
   const [isInitializing, setIsInitializing] = useState(false);
   const [recipesLoaded, setRecipesLoaded] = useState(false);
 
-  // Check if recipes are loaded
+  // Quick search suggestions
+  const quickSearches = [
+    "High protein low carb",
+    "Spicy vegetarian dinner",
+    "Quick healthy lunch under 400 calories",
+    "Comfort food for cold evening"
+  ];
+
+  // Check if recipes are loaded on mount
   useEffect(() => {
     checkRecipes();
   }, []);
 
+  /**
+   * Check if recipes exist in database
+   */
   const checkRecipes = async () => {
     try {
       const response = await axios.get(`${API}/recipes`);
@@ -33,6 +48,9 @@ const HomePage = () => {
     }
   };
 
+  /**
+   * Initialize recipe database
+   */
   const initializeRecipes = async () => {
     setIsInitializing(true);
     try {
@@ -47,6 +65,9 @@ const HomePage = () => {
     }
   };
 
+  /**
+   * Handle recipe search
+   */
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       toast.error("Please enter a search query");
@@ -71,18 +92,12 @@ const HomePage = () => {
     }
   };
 
-  const quickSearches = [
-    "High protein low carb",
-    "Spicy vegetarian dinner",
-    "Quick healthy lunch under 400 calories",
-    "Comfort food for cold evening"
-  ];
-
-  const getSpiceColor = (level) => {
-    if (!level) return "bg-gray-100 text-gray-700";
-    if (level.toLowerCase().includes("spicy")) return "bg-red-100 text-red-700";
-    if (level.toLowerCase().includes("medium")) return "bg-orange-100 text-orange-700";
-    return "bg-green-100 text-green-700";
+  /**
+   * Handle quick search click
+   */
+  const handleQuickSearch = (query) => {
+    setSearchQuery(query);
+    setTimeout(() => handleSearch(), 100);
   };
 
   return (
@@ -98,7 +113,9 @@ const HomePage = () => {
                 <ChefHat className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>NIMA</h1>
+                <h1 className="text-2xl font-bold text-gray-900" style={{fontFamily: 'Space Grotesk, sans-serif'}}>
+                  NIMA
+                </h1>
                 <p className="text-xs text-gray-600">Nutritional Intelligence Menu Assistant</p>
               </div>
             </div>
@@ -127,36 +144,13 @@ const HomePage = () => {
           </p>
 
           {/* Search Bar */}
-          <div className="bg-white rounded-2xl shadow-xl p-3 border border-gray-200">
-            <div className="flex gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <Input
-                  data-testid="search-input"
-                  type="text"
-                  placeholder="E.g., 'high protein breakfast under 500 calories' or 'spicy vegetarian dinner'"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  className="pl-12 h-14 text-base border-0 focus-visible:ring-0 shadow-none"
-                />
-              </div>
-              <Button
-                data-testid="search-button"
-                onClick={handleSearch}
-                disabled={isLoading || !recipesLoaded}
-                className="h-14 px-8 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-xl shadow-lg"
-              >
-                {isLoading ? (
-                  <span className="flex items-center gap-2">
-                    <span className="animate-spin">⚡</span> Searching
-                  </span>
-                ) : (
-                  "Search"
-                )}
-              </Button>
-            </div>
-          </div>
+          <SearchBar
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            onSearch={handleSearch}
+            isLoading={isLoading}
+            recipesLoaded={recipesLoaded}
+          />
 
           {/* Initialize Button */}
           {!recipesLoaded && (
@@ -180,10 +174,7 @@ const HomePage = () => {
               <button
                 key={index}
                 data-testid={`quick-search-${index}`}
-                onClick={() => {
-                  setSearchQuery(query);
-                  setTimeout(() => handleSearch(), 100);
-                }}
+                onClick={() => handleQuickSearch(query)}
                 className="text-sm px-4 py-2 bg-gray-100 hover:bg-emerald-100 text-gray-700 hover:text-emerald-700 rounded-full border border-gray-200 hover:border-emerald-300"
               >
                 {query}
@@ -204,99 +195,7 @@ const HomePage = () => {
 
             <div className="grid gap-6">
               {searchResults.map((result, index) => (
-                <Card key={index} data-testid={`recipe-card-${index}`} className="overflow-hidden hover:shadow-2xl border-2 border-transparent hover:border-emerald-200">
-                  <CardHeader className="bg-gradient-to-r from-emerald-50 to-teal-50">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <CardTitle className="text-2xl mb-2" style={{fontFamily: 'Space Grotesk, sans-serif'}}>
-                          {result.recipe.name}
-                        </CardTitle>
-                        <CardDescription className="text-base mb-3">
-                          {result.recipe.description}
-                        </CardDescription>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="secondary" className="bg-white">
-                            {result.recipe.cuisine_type}
-                          </Badge>
-                          <Badge className={getSpiceColor(result.recipe.spice_level)}>
-                            <Flame className="w-3 h-3 mr-1" />
-                            {result.recipe.spice_level}
-                          </Badge>
-                          <Badge variant="outline" className="bg-white">
-                            <Clock className="w-3 h-3 mr-1" />
-                            {result.recipe.cooking_time}
-                          </Badge>
-                          {result.recipe.dietary_tags.map((tag, i) => (
-                            <Badge key={i} className="bg-purple-100 text-purple-700 border-purple-300">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="text-right ml-4">
-                        <div className="text-3xl font-bold text-emerald-600">
-                          {result.recipe.estimated_calories}
-                        </div>
-                        <div className="text-xs text-gray-600">calories</div>
-                        <div className="mt-2 text-sm">
-                          <div className="text-gray-600">Match: <span className="font-bold text-emerald-600">{(result.match_score * 100).toFixed(0)}%</span></div>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-6">
-                    {/* Match Explanation */}
-                    <div className="mb-6 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
-                      <div className="flex gap-2 mb-2">
-                        <Sparkles className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold text-emerald-900 mb-1">Why this matches:</p>
-                          <p className="text-emerald-800 leading-relaxed">{result.match_explanation}</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Nutrition Info */}
-                    <div className="grid grid-cols-3 gap-4 mb-6">
-                      <div className="text-center p-4 bg-blue-50 rounded-xl">
-                        <div className="text-2xl font-bold text-blue-600">{result.recipe.estimated_protein}g</div>
-                        <div className="text-xs text-blue-700 font-medium mt-1">Protein</div>
-                      </div>
-                      <div className="text-center p-4 bg-amber-50 rounded-xl">
-                        <div className="text-2xl font-bold text-amber-600">{result.recipe.estimated_carbs}g</div>
-                        <div className="text-xs text-amber-700 font-medium mt-1">Carbs</div>
-                      </div>
-                      <div className="text-center p-4 bg-pink-50 rounded-xl">
-                        <div className="text-2xl font-bold text-pink-600">{result.recipe.estimated_fat}g</div>
-                        <div className="text-xs text-pink-700 font-medium mt-1">Fat</div>
-                      </div>
-                    </div>
-
-                    {/* Ingredients Preview */}
-                    <div className="mb-4">
-                      <p className="font-semibold text-gray-900 mb-2">Key Ingredients:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {result.recipe.ingredients.slice(0, 8).map((ingredient, i) => (
-                          <span key={i} className="text-sm px-3 py-1 bg-gray-100 text-gray-700 rounded-full">
-                            {ingredient}
-                          </span>
-                        ))}
-                        {result.recipe.ingredients.length > 8 && (
-                          <span className="text-sm px-3 py-1 bg-gray-200 text-gray-600 rounded-full">
-                            +{result.recipe.ingredients.length - 8} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <Button 
-                      data-testid={`order-button-${index}`}
-                      className="w-full bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold h-12 rounded-xl"
-                    >
-                      Order Now
-                    </Button>
-                  </CardContent>
-                </Card>
+                <RecipeCard key={index} result={result} index={index} />
               ))}
             </div>
           </div>
