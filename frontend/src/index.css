@@ -1,39 +1,111 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 142.1 76.2% 36.3%;
-    --radius: 0.5rem;
+/* Uber Eats Custom Font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  /* Uber Eats Brand Colors */
+  --uber-green: #06C167;
+  --uber-green-dark: #05a055;
+  --uber-black: #000000;
+  --uber-white: #ffffff;
+  --uber-gray-50: #f6f6f6;
+  --uber-gray-100: #eeeeee;
+  --uber-gray-200: #e2e2e2;
+  --uber-gray-300: #cbcbcb;
+  --uber-gray-400: #afafaf;
+  --uber-gray-500: #757575;
+  --uber-gray-600: #545454;
+  --uber-gray-700: #333333;
+  --uber-gray-800: #1f1f1f;
+  --uber-gray-900: #141414;
+}
+
+* {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  background-color: var(--uber-white);
+  color: var(--uber-black);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--uber-gray-100);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--uber-gray-400);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--uber-gray-500);
+}
+
+/* Uber Eats Button Hover Effect */
+.uber-btn {
+  transition: all 0.2s ease;
+}
+
+.uber-btn:hover {
+  transform: scale(1.02);
+}
+
+.uber-btn:active {
+  transform: scale(0.98);
+}
+
+/* Card hover effect */
+.uber-card {
+  transition: all 0.3s ease;
+}
+
+.uber-card:hover {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+}
+
+/* Animation for loading states */
+@keyframes pulse-green {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
   }
 }
 
-@layer base {
-  * {
-    @apply border-border;
+.animate-pulse-green {
+  animation: pulse-green 2s ease-in-out infinite;
+}
+
+/* Search input focus state */
+input:focus {
+  outline: none;
+}
+
+/* Badge animations */
+.badge-pop {
+  animation: pop 0.3s ease;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.8);
+    opacity: 0;
   }
-  body {
-    @apply bg-background text-foreground;
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }

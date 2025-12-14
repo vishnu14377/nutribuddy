@@ -1,20 +1,11 @@
 /**
- * Search bar component for recipe queries
+ * Search bar component - Uber Eats themed
  */
 
-import { Search } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-/**
- * SearchBar Component
- * @param {Object} props
- * @param {string} props.searchQuery - Current search query
- * @param {Function} props.setSearchQuery - Function to update search query
- * @param {Function} props.onSearch - Function to execute search
- * @param {boolean} props.isLoading - Loading state
- * @param {boolean} props.recipesLoaded - Whether recipes are loaded
- */
 export const SearchBar = ({
   searchQuery,
   setSearchQuery,
@@ -29,32 +20,35 @@ export const SearchBar = ({
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl p-3 border border-gray-200">
-      <div className="flex gap-3">
+    <div className="bg-white rounded-2xl shadow-2xl p-2 border border-gray-200 max-w-3xl mx-auto">
+      <div className="flex gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
           <Input
             data-testid="search-input"
             type="text"
-            placeholder="E.g., 'high protein breakfast under 500 calories' or 'spicy vegetarian dinner'"
+            placeholder='Try "high protein meal" or "spicy vegetarian under 400 cal"'
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyPress={handleKeyPress}
-            className="pl-12 h-14 text-base border-0 focus-visible:ring-0 shadow-none"
+            className="pl-12 h-14 text-base border-0 focus-visible:ring-0 shadow-none bg-gray-50 rounded-xl text-black placeholder:text-gray-400"
           />
         </div>
         <Button
           data-testid="search-button"
           onClick={onSearch}
           disabled={isLoading || !recipesLoaded}
-          className="h-14 px-8 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold rounded-xl shadow-lg"
+          className="h-14 px-8 bg-black hover:bg-gray-800 text-white font-bold rounded-xl shadow-lg transition-all duration-200 disabled:bg-gray-300"
         >
           {isLoading ? (
             <span className="flex items-center gap-2">
-              <span className="animate-spin">⚡</span> Searching
+              <span className="animate-spin">⚡</span> Finding...
             </span>
           ) : (
-            "Search"
+            <span className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-[#06C167]" />
+              Search
+            </span>
           )}
         </Button>
       </div>
