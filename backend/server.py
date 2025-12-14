@@ -1,8 +1,7 @@
-"""Main FastAPI application."""
+"""Main FastAPI application with SQLite database."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 import os
 import logging
@@ -10,6 +9,7 @@ from pathlib import Path
 
 from routes.recipe_routes import create_recipe_router
 from services.vector_service import VectorService
+from services.database_service import DatabaseService
 
 # Load environment variables
 ROOT_DIR = Path(__file__).parent
@@ -22,10 +22,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize MongoDB
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# Initialize SQLite Database
+db_path = ROOT_DIR / 'data' / 'ubereats.db'
+db_service = DatabaseService(str(db_path))
 
 # Initialize Vector Service
 vector_service = VectorService(
@@ -35,8 +34,8 @@ vector_service = VectorService(
 
 # Create FastAPI app
 app = FastAPI(
-    title="NIMA API",
-    description="Nutritional Intelligence Menu Assistant",
+    title="Uber Eats AI Search",
+    description="AI-powered food discovery for Uber Eats",
     version="1.0.0"
 )
 
@@ -50,14 +49,14 @@ app.add_middleware(
 )
 
 # Include routers
-recipe_router = create_recipe_router(db, vector_service)
+recipe_router = create_recipe_router(db_service, vector_service)
 app.include_router(recipe_router)
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     """Close database connection on shutdown."""
-    client.close()
+    db_service.close()
     logger.info("Database connection closed")
 
 

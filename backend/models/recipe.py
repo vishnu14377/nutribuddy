@@ -22,6 +22,11 @@ class Recipe(BaseModel):
     estimated_fat: Optional[float] = None
     description: Optional[str] = None
     image_url: Optional[str] = None
+    # Uber Eats specific fields
+    restaurant_name: Optional[str] = None
+    delivery_time: Optional[str] = None
+    rating: Optional[float] = None
+    price: Optional[float] = None
 
 
 class SearchQuery(BaseModel):

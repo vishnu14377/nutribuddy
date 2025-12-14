@@ -1,24 +1,24 @@
 """Recipe API routes."""
 
 from fastapi import APIRouter, HTTPException
-from motor.motor_asyncio import AsyncIOMotorDatabase
 from typing import List
 
 from models.recipe import Recipe, SearchQuery, SearchResult
 from services.vector_service import VectorService
 from services.nutrition_service import NutritionService
 from services.explanation_service import ExplanationService
+from services.database_service import DatabaseService
 from utils.recipe_data import RECIPE_DATA
 
 
 def create_recipe_router(
-    db: AsyncIOMotorDatabase,
+    db_service: DatabaseService,
     vector_service: VectorService
 ) -> APIRouter:
     """Create recipe routes.
     
     Args:
-        db: MongoDB database instance
+        db_service: SQLite database service
         vector_service: Vector search service
         
     Returns:
@@ -29,11 +29,11 @@ def create_recipe_router(
     @router.get("/")
     async def root():
         """Root endpoint."""
-        return {"message": "NIMA - Nutritional Intelligence Menu Assistant"}
+        return {"message": "Uber Eats AI Search - Find Your Perfect Meal"}
     
     @router.post("/recipes/upload")
     async def upload_recipes():
-        """Load recipes from cookbook data into MongoDB and Pinecone."""
+        """Load recipes from cookbook data into SQLite and Pinecone."""
         uploaded_count = 0
         
         for recipe_data in RECIPE_DATA:
@@ -51,19 +51,15 @@ def create_recipe_router(
             # Create recipe object
             recipe = Recipe(**recipe_data)
             
-            # Store in MongoDB
+            # Store in SQLite
             recipe_dict = recipe.model_dump()
-            await db.recipes.update_one(
-                {"name": recipe.name},
-                {"$set": recipe_dict},
-                upsert=True
-            )
+            db_service.upsert_recipe(recipe_dict)
             
             # Store in vector database
             vector_service.store_recipe(recipe)
             uploaded_count += 1
         
-        return {"message": f"Successfully uploaded {uploaded_count} recipes"}
+        return {"message": f"Successfully loaded {uploaded_count} dishes"}
     
     @router.post("/search", response_model=List[SearchResult])
     async def search_recipes(query: SearchQuery):
@@ -74,11 +70,10 @@ def create_recipe_router(
         results: List[SearchResult] = []
         
         for match in search_results:
-            # Get full recipe from MongoDB
-            recipe_doc = await db.recipes.find_one({"id": match['id']})
+            # Get full recipe from SQLite
+            recipe_doc = db_service.get_recipe_by_id(match['id'])
             
             if recipe_doc:
-                recipe_doc.pop('_id', None)
                 recipe = Recipe(**recipe_doc)
                 
                 # Generate explanation
@@ -98,7 +93,7 @@ def create_recipe_router(
     @router.get("/recipes", response_model=List[Recipe])
     async def get_all_recipes():
         """Get all recipes from database."""
-        recipes = await db.recipes.find({}, {"_id": 0}).to_list(100)
+        recipes = db_service.get_all_recipes()
         return [Recipe(**r) for r in recipes]
     
     return router
