@@ -312,6 +312,18 @@ class DataIngestionService:
                     calories = cls.estimate_calories(title, description)
                     macros = cls.estimate_macros(title, description, calories)
                     
+                    # Parse rating (handle percentage strings like '85%')
+                    rating_raw = row.get(f'{prefix}rating')
+                    rating = None
+                    if pd.notna(rating_raw):
+                        try:
+                            if isinstance(rating_raw, str) and '%' in rating_raw:
+                                rating = float(rating_raw.replace('%', '')) / 20  # Convert to 5-star scale
+                            else:
+                                rating = float(rating_raw)
+                        except:
+                            rating = None
+                    
                     item = {
                         'id': str(uuid.uuid4()),
                         'name': title,
@@ -329,7 +341,7 @@ class DataIngestionService:
                         'image_url': row.get(f'{prefix}imageUrl', ''),
                         'restaurant_name': restaurant_name,
                         'delivery_time': '20-35 min',
-                        'rating': float(row.get(f'{prefix}rating', 0)) if pd.notna(row.get(f'{prefix}rating')) else None,
+                        'rating': rating,
                         'price': round(price, 2),
                         'uber_uuid': item_uuid,
                         'tags': row.get(f'{prefix}labelPrimary', '')
