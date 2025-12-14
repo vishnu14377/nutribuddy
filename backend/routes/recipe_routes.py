@@ -1,14 +1,18 @@
 """Recipe API routes."""
 
-from fastapi import APIRouter, HTTPException
-from typing import List
+from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
+from typing import List, Optional
+import os
+import tempfile
+import logging
 
 from models.recipe import Recipe, SearchQuery, SearchResult
 from services.vector_service import VectorService
-from services.nutrition_service import NutritionService
 from services.explanation_service import ExplanationService
 from services.database_service import DatabaseService
-from utils.recipe_data import RECIPE_DATA
+from services.data_ingestion_service import DataIngestionService
+
+logger = logging.getLogger(__name__)
 
 
 def create_recipe_router(
@@ -31,9 +35,124 @@ def create_recipe_router(
         """Root endpoint."""
         return {"message": "Uber Eats AI Search - Find Your Perfect Meal"}
     
+    @router.get("/stats")
+    async def get_stats():
+        """Get database and vector index statistics."""
+        try:
+            recipes = db_service.get_all_recipes(limit=10000)
+            vector_stats = vector_service.get_index_stats()
+            return {
+                "database": {
+                    "total_items": len(recipes),
+                    "unique_restaurants": len(set(r.get('restaurant_name', '') for r in recipes))
+                },
+                "vector_index": vector_stats
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    @router.post("/upload/excel")
+    async def upload_excel(file: UploadFile = File(...)):
+        """Upload and process Uber Eats Excel data.
+        
+        This endpoint accepts an Excel file from Uber Eats scraper,
+        extracts menu items, estimates nutrition, and indexes them.
+        """
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="File must be Excel format (.xlsx or .xls)")
+        
+        # Save uploaded file temporarily
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+            content = await file.read()
+            tmp.write(content)
+            tmp_path = tmp.name
+        
+        try:
+            # Extract menu items
+            logger.info("Extracting menu items from Excel...")
+            items = DataIngestionService.extract_menu_items(tmp_path)
+            logger.info(f"Extracted {len(items)} menu items")
+            
+            # Store in SQLite
+            stored_count = 0
+            for item in items:
+                db_service.upsert_recipe(item)
+                stored_count += 1
+            
+            logger.info(f"Stored {stored_count} items in SQLite")
+            
+            # Convert to Recipe objects for vectorization
+            recipes = [Recipe(**item) for item in items]
+            
+            # Store in Pinecone (batch)
+            logger.info("Vectorizing and indexing items...")
+            vectorized = vector_service.store_recipes_batch(recipes, batch_size=50)
+            logger.info(f"Vectorized {vectorized} items")
+            
+            return {
+                "message": f"Successfully processed {len(items)} menu items",
+                "details": {
+                    "extracted": len(items),
+                    "stored_in_db": stored_count,
+                    "vectorized": vectorized,
+                    "unique_restaurants": len(set(item['restaurant_name'] for item in items))
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing Excel: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            # Cleanup temp file
+            os.unlink(tmp_path)
+    
+    @router.post("/upload/url")
+    async def upload_from_url(url: str):
+        """Process Uber Eats data from URL.
+        
+        Args:
+            url: URL to Excel file
+        """
+        import requests
+        
+        try:
+            # Download file
+            response = requests.get(url, timeout=60)
+            response.raise_for_status()
+            
+            # Save temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
+                tmp.write(response.content)
+                tmp_path = tmp.name
+            
+            # Extract and process
+            items = DataIngestionService.extract_menu_items(tmp_path)
+            
+            # Store in SQLite
+            for item in items:
+                db_service.upsert_recipe(item)
+            
+            # Vectorize
+            recipes = [Recipe(**item) for item in items]
+            vectorized = vector_service.store_recipes_batch(recipes, batch_size=50)
+            
+            os.unlink(tmp_path)
+            
+            return {
+                "message": f"Successfully processed {len(items)} menu items",
+                "vectorized": vectorized
+            }
+            
+        except Exception as e:
+            logger.error(f"Error processing URL: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
     @router.post("/recipes/upload")
     async def upload_recipes():
-        """Load recipes from cookbook data into SQLite and Pinecone."""
+        """Load sample recipes (for demo purposes)."""
+        from utils.recipe_data import RECIPE_DATA
+        from services.nutrition_service import NutritionService
+        
         uploaded_count = 0
         
         for recipe_data in RECIPE_DATA:
@@ -59,13 +178,24 @@ def create_recipe_router(
             vector_service.store_recipe(recipe)
             uploaded_count += 1
         
-        return {"message": f"Successfully loaded {uploaded_count} dishes"}
+        return {"message": f"Successfully loaded {uploaded_count} sample dishes"}
     
     @router.post("/search", response_model=List[SearchResult])
     async def search_recipes(query: SearchQuery):
-        """Search recipes using natural language with AI-powered matching."""
+        """Search menu items using natural language with AI-powered matching.
+        
+        The AI understands:
+        - Nutrition queries: "high protein", "under 500 calories", "low carb"
+        - Cuisine types: "Indian food", "pizza", "sushi"
+        - Dietary needs: "vegetarian", "vegan", "gluten-free"
+        - Preferences: "spicy", "mild", "comfort food"
+        """
         # Search in vector database
-        search_results = vector_service.search(query.query, top_k=10)
+        search_results = vector_service.search(
+            query.query, 
+            top_k=15,
+            filters=query.filters
+        )
         
         results: List[SearchResult] = []
         
@@ -76,7 +206,7 @@ def create_recipe_router(
             if recipe_doc:
                 recipe = Recipe(**recipe_doc)
                 
-                # Generate explanation
+                # Generate AI explanation
                 explanation = ExplanationService.generate_explanation(
                     query.query,
                     recipe
@@ -88,12 +218,39 @@ def create_recipe_router(
                     match_explanation=explanation
                 ))
         
-        return results
+        # Sort by match score
+        results.sort(key=lambda x: x.match_score, reverse=True)
+        
+        return results[:10]
     
     @router.get("/recipes", response_model=List[Recipe])
-    async def get_all_recipes():
-        """Get all recipes from database."""
-        recipes = db_service.get_all_recipes()
+    async def get_all_recipes(limit: int = 100, cuisine: Optional[str] = None):
+        """Get all menu items from database."""
+        recipes = db_service.get_all_recipes(limit=limit)
+        
+        if cuisine:
+            recipes = [r for r in recipes if cuisine.lower() in (r.get('cuisine_type', '') or '').lower()]
+        
         return [Recipe(**r) for r in recipes]
+    
+    @router.get("/recipes/{recipe_id}", response_model=Recipe)
+    async def get_recipe(recipe_id: str):
+        """Get a specific recipe by ID."""
+        recipe = db_service.get_recipe_by_id(recipe_id)
+        if not recipe:
+            raise HTTPException(status_code=404, detail="Recipe not found")
+        return Recipe(**recipe)
+    
+    @router.delete("/recipes/clear")
+    async def clear_all():
+        """Clear all data (use with caution)."""
+        try:
+            vector_service.clear_index()
+            # Clear SQLite
+            with db_service.get_connection() as conn:
+                conn.execute("DELETE FROM recipes")
+            return {"message": "All data cleared successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
     
     return router
