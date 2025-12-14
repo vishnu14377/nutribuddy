@@ -1,0 +1,58 @@
+### Uber Eats AI Search - API Testing
+### Use with VS Code REST Client extension
+
+@baseUrl = http://localhost:8001/api
+
+### Health Check
+GET {{baseUrl}}/
+
+### Initialize Menu Database
+POST {{baseUrl}}/recipes/upload
+
+### Get All Recipes
+GET {{baseUrl}}/recipes
+
+### Search: High Protein Low Carb
+POST {{baseUrl}}/search
+Content-Type: application/json
+
+{
+    "query": "high protein low carb dinner",
+    "filters": {}
+}
+
+### Search: Spicy Vegetarian
+POST {{baseUrl}}/search
+Content-Type: application/json
+
+{
+    "query": "spicy vegetarian meal",
+    "filters": {}
+}
+
+### Search: Under 400 Calories
+POST {{baseUrl}}/search
+Content-Type: application/json
+
+{
+    "query": "healthy meal under 400 calories",
+    "filters": {}
+}
+
+### Search: Indian Food
+POST {{baseUrl}}/search
+Content-Type: application/json
+
+{
+    "query": "indian curry",
+    "filters": {}
+}
+
+### Search: Quick Comfort Food
+POST {{baseUrl}}/search
+Content-Type: application/json
+
+{
+    "query": "comfort food quick delivery",
+    "filters": {}
+}
