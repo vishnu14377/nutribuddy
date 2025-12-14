@@ -39,14 +39,12 @@ def create_recipe_router(
     async def get_stats():
         """Get database and vector index statistics."""
         try:
-            recipes = db_service.get_all_recipes(limit=10000)
-            vector_stats = vector_service.get_index_stats()
+            total_count = db_service.get_count()
             return {
                 "database": {
-                    "total_items": len(recipes),
-                    "unique_restaurants": len(set(r.get('restaurant_name', '') for r in recipes))
+                    "total_items": total_count
                 },
-                "vector_index": vector_stats
+                "status": "ready"
             }
         except Exception as e:
             return {"error": str(e)}
