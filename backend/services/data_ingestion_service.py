@@ -344,7 +344,7 @@ class DataIngestionService:
                         'rating': rating,
                         'price': round(price, 2),
                         'uber_uuid': item_uuid,
-                        'tags': row.get(f'{prefix}labelPrimary', '')
+                        'tags': str(row.get(f'{prefix}labelPrimary', '')) if pd.notna(row.get(f'{prefix}labelPrimary')) else ''
                     }
                     all_items.append(item)
         
