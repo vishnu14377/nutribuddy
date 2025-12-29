@@ -104,6 +104,9 @@ class DataIngestionService:
                     price = float(price_raw.replace('$', '').replace(',', ''))
                 else:
                     price = float(price_raw) if price_raw and str(price_raw) != 'nan' else 0
+                # If price > 100, it's likely in cents - convert to dollars
+                if price > 100:
+                    price = price / 100
             except:
                 price = 0
             
