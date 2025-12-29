@@ -18,18 +18,28 @@ logger = logging.getLogger(__name__)
 
 def create_recipe_router(
     db_service: DatabaseService,
-    vector_service: VectorService
+    vector_service: VectorService,
+    google_api_key: str = None
 ) -> APIRouter:
     """Create recipe routes.
     
     Args:
         db_service: SQLite database service
         vector_service: Vector search service
+        google_api_key: Google API key for enhanced AI search
         
     Returns:
         Configured APIRouter
     """
     router = APIRouter(prefix="/api", tags=["recipes"])
+    
+    # Initialize enhanced search pipeline if API key provided
+    enhanced_search = None
+    if google_api_key:
+        enhanced_search = EnhancedSearchPipeline(
+            vector_service, db_service, google_api_key
+        )
+        logger.info("Enhanced AI Search Pipeline initialized")
     
     @router.get("/")
     async def root():
