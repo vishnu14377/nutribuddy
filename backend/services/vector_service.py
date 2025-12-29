@@ -1,65 +1,74 @@
-"""Vector embedding and search service with LLM enhancement."""
+"""Vector embedding and search service using OpenAI."""
 
-import google.generativeai as genai
 from pinecone import Pinecone, ServerlessSpec
 from typing import List, Dict, Any, Optional
 import os
 import logging
+import time
 from models.recipe import Recipe
+from services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
 
 
 class VectorService:
-    """Service for vector embeddings and similarity search."""
+    """Service for vector embeddings and similarity search using OpenAI."""
     
-    def __init__(self, pinecone_api_key: str, google_api_key: str):
+    def __init__(self, pinecone_api_key: str, openai_api_key: str):
         """Initialize vector service with API keys.
         
         Args:
             pinecone_api_key: Pinecone API key
-            google_api_key: Google Gemini API key
+            openai_api_key: OpenAI API key
         """
-        # Configure Google Gemini
-        genai.configure(api_key=google_api_key)
-        self.google_api_key = google_api_key
+        # Initialize OpenAI service
+        self.openai_service = OpenAIService(api_key=openai_api_key)
         
         # Initialize Pinecone
         self.pc = Pinecone(api_key=pinecone_api_key)
-        self.index_name = "ubereats-menu"
+        self.index_name = "ubereats-menu-openai"  # New index for OpenAI embeddings
+        self.embedding_dimensions = 1536  # OpenAI text-embedding-3-large reduced dimensions
         
-        # Create index if it doesn't exist
+        # Create or verify index
+        self._ensure_index()
+        
+        self.index = self.pc.Index(self.index_name)
+        logger.info(f"Connected to Pinecone index: {self.index_name}")
+    
+    def _ensure_index(self):
+        """Ensure Pinecone index exists with correct dimensions."""
         existing_indexes = [idx.name for idx in self.pc.list_indexes()]
-        if self.index_name not in existing_indexes:
-            logger.info(f"Creating Pinecone index: {self.index_name}")
+        
+        if self.index_name in existing_indexes:
+            # Verify dimensions
+            index = self.pc.Index(self.index_name)
+            stats = index.describe_index_stats()
+            logger.info(f"Index {self.index_name} exists with stats: {stats}")
+        else:
+            # Create new index with OpenAI dimensions
+            logger.info(f"Creating new Pinecone index: {self.index_name} with {self.embedding_dimensions} dimensions")
             self.pc.create_index(
                 name=self.index_name,
-                dimension=768,
+                dimension=self.embedding_dimensions,
                 metric='cosine',
                 spec=ServerlessSpec(
                     cloud='aws',
                     region='us-east-1'
                 )
             )
-        
-        self.index = self.pc.Index(self.index_name)
-        logger.info(f"Connected to Pinecone index: {self.index_name}")
+            # Wait for index to be ready
+            time.sleep(5)
     
     def generate_embedding(self, text: str) -> List[float]:
-        """Generate embedding vector using Gemini.
+        """Generate embedding vector using OpenAI.
         
         Args:
             text: Text to embed
             
         Returns:
-            List of embedding values
+            List of embedding values (1536 dimensions)
         """
-        result = genai.embed_content(
-            model="models/text-embedding-004",
-            content=text,
-            task_type="retrieval_document"
-        )
-        return result['embedding']
+        return self.openai_service.generate_embedding(text)
     
     def create_searchable_text(self, recipe: Recipe) -> str:
         """Create searchable text from recipe/menu item.
@@ -73,25 +82,26 @@ class VectorService:
         # Build rich searchable text
         dietary_info = ', '.join(recipe.dietary_tags) if recipe.dietary_tags else 'No special diet'
         
+        # Create detailed text for better semantic matching
         text = f"""
-        Menu Item: {recipe.name}
-        Restaurant: {recipe.restaurant_name or 'Various'}
-        Cuisine: {recipe.cuisine_type}
-        Description: {recipe.description or ''}
-        
-        Nutritional Information:
-        - Calories: {recipe.estimated_calories or 'Unknown'} kcal
-        - Protein: {recipe.estimated_protein or 'Unknown'}g
-        - Carbohydrates: {recipe.estimated_carbs or 'Unknown'}g
-        - Fat: {recipe.estimated_fat or 'Unknown'}g
-        
-        Dietary Tags: {dietary_info}
-        Spice Level: {recipe.spice_level or 'Mild'}
-        Price: ${recipe.price or 0:.2f}
-        Delivery Time: {recipe.delivery_time or '20-35 min'}
-        
-        Keywords: {recipe.name}, {recipe.cuisine_type}, {recipe.restaurant_name or ''}, 
-        {recipe.spice_level or ''}, {dietary_info}
+Menu Item: {recipe.name}
+Restaurant: {recipe.restaurant_name or 'Various'}
+Cuisine: {recipe.cuisine_type or 'General'}
+Description: {recipe.description or ''}
+
+Nutritional Profile:
+- Calories: {recipe.estimated_calories or 'Unknown'} kcal
+- Protein: {recipe.estimated_protein or 0}g ({"high protein" if (recipe.estimated_protein or 0) > 25 else "moderate protein" if (recipe.estimated_protein or 0) > 15 else "low protein"})
+- Carbohydrates: {recipe.estimated_carbs or 0}g ({"low carb" if (recipe.estimated_carbs or 0) < 20 else "moderate carbs" if (recipe.estimated_carbs or 0) < 50 else "high carbs"})
+- Fat: {recipe.estimated_fat or 0}g
+
+Dietary Information: {dietary_info}
+Spice Level: {recipe.spice_level or 'Mild'}
+Price: ${recipe.price or 0:.2f}
+
+Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or ''}, 
+{dietary_info}, {"high protein" if (recipe.estimated_protein or 0) > 25 else ""}, 
+{"low carb keto friendly" if (recipe.estimated_carbs or 0) < 20 else ""}
         """
         
         return text.strip()
@@ -127,7 +137,7 @@ class VectorService:
             }]
         )
     
-    def store_recipes_batch(self, recipes: List[Recipe], batch_size: int = 100) -> int:
+    def store_recipes_batch(self, recipes: List[Recipe], batch_size: int = 50) -> int:
         """Store multiple recipes in batches.
         
         Args:
@@ -140,7 +150,7 @@ class VectorService:
         stored = 0
         vectors = []
         
-        for recipe in recipes:
+        for i, recipe in enumerate(recipes):
             try:
                 searchable_text = self.create_searchable_text(recipe)
                 embedding = self.generate_embedding(searchable_text)
@@ -167,8 +177,10 @@ class VectorService:
                 if len(vectors) >= batch_size:
                     self.index.upsert(vectors=vectors)
                     stored += len(vectors)
-                    logger.info(f"Stored {stored} vectors...")
+                    logger.info(f"Stored {stored}/{len(recipes)} vectors...")
                     vectors = []
+                    # Small delay to avoid rate limits
+                    time.sleep(0.5)
                     
             except Exception as e:
                 logger.error(f"Error processing {recipe.name}: {e}")
@@ -179,9 +191,10 @@ class VectorService:
             self.index.upsert(vectors=vectors)
             stored += len(vectors)
         
+        logger.info(f"Successfully stored {stored} vectors in Pinecone")
         return stored
     
-    def search(self, query: str, top_k: int = 10, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
+    def search(self, query: str, top_k: int = 20, filters: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """Search for recipes using natural language.
         
         Args:
@@ -205,6 +218,10 @@ class VectorService:
                 filter_dict['cuisine_type'] = {'$eq': filters['cuisine_type']}
             if 'spice_level' in filters:
                 filter_dict['spice_level'] = {'$eq': filters['spice_level']}
+            if 'min_protein' in filters:
+                filter_dict['protein'] = {'$gte': filters['min_protein']}
+            if 'max_carbs' in filters:
+                filter_dict['carbs'] = {'$lte': filters['max_carbs']}
         
         # Query Pinecone
         results = self.index.query(
@@ -220,6 +237,15 @@ class VectorService:
             'metadata': match.get('metadata', {})
         } for match in results['matches']]
     
+    def clear_index(self) -> None:
+        """Clear all vectors from the index."""
+        try:
+            self.index.delete(delete_all=True)
+            logger.info(f"Cleared all vectors from index: {self.index_name}")
+        except Exception as e:
+            logger.error(f"Error clearing index: {e}")
+            raise
+    
     def get_index_stats(self) -> Dict[str, Any]:
         """Get Pinecone index statistics.
         
@@ -228,12 +254,8 @@ class VectorService:
         """
         stats = self.index.describe_index_stats()
         return {
-            'total_vectors': stats.total_vector_count,
-            'dimension': stats.dimension,
-            'namespaces': dict(stats.namespaces) if stats.namespaces else {}
+            'index_name': self.index_name,
+            'dimension': self.embedding_dimensions,
+            'total_vectors': stats.get('total_vector_count', 0),
+            'namespaces': stats.get('namespaces', {})
         }
-    
-    def clear_index(self) -> None:
-        """Clear all vectors from the index."""
-        self.index.delete(delete_all=True)
-        logger.info("Cleared all vectors from index")
