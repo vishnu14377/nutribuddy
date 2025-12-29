@@ -26,7 +26,7 @@ class VectorService:
         
         # Initialize Pinecone
         self.pc = Pinecone(api_key=pinecone_api_key)
-        self.index_name = "ubereats-menu-openai"  # New index for OpenAI embeddings
+        self.index_name = "vector1-17a1f3fa"  # Existing index with 1536 dimensions
         self.embedding_dimensions = 1536  # OpenAI text-embedding-3-large reduced dimensions
         
         # Create or verify index
