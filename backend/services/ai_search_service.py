@@ -76,6 +76,9 @@ class EnhancedAISearchService:
         """Apply nutritional filters based on query (instant, no API)."""
         query_lower = query.lower()
         
+        # Check for calorie limits first (highest priority)
+        calorie_limit = self._extract_calorie_limit(query_lower)
+        
         # Check for high protein, low carb type queries
         is_protein_focused = any(term in query_lower for term in [
             "high protein", "protein rich", "protein-rich", "high-protein",
@@ -85,6 +88,30 @@ class EnhancedAISearchService:
             "low carb", "low-carb", "low carbs", "fewer carbs",
             "less carbs", "keto", "no carbs"
         ])
+        
+        # Apply calorie filter FIRST if specified
+        if calorie_limit:
+            filtered = []
+            for result in results:
+                metadata = result.get('metadata', {})
+                calories = metadata.get('calories', 0) or 0
+                if calories <= calorie_limit:
+                    filtered.append(result)
+                    logger.debug(f"✓ Under {calorie_limit} cal: {metadata.get('name', 'Unknown')} ({calories} cal)")
+                else:
+                    logger.debug(f"✗ Over {calorie_limit} cal: {metadata.get('name', 'Unknown')} ({calories} cal)")
+            
+            if filtered:
+                # Sort by calories (lowest first)
+                results = sorted(filtered, key=lambda x: x.get('metadata', {}).get('calories', 0) or 0)
+                logger.info(f"Calorie filter: {len(filtered)} items under {calorie_limit} cal")
+            else:
+                # No items under limit - return lowest calorie items
+                logger.warning(f"No items under {calorie_limit} cal, returning lowest calorie items")
+                results = sorted(
+                    results,
+                    key=lambda x: x.get('metadata', {}).get('calories', 9999) or 9999
+                )[:15]
         
         if is_protein_focused and is_low_carb:
             # STRICT FILTER: protein must be > carbs
@@ -129,8 +156,38 @@ class EnhancedAISearchService:
                 return sorted(low_carb, key=lambda x: x.get('metadata', {}).get('carbs', 100) or 100)
             return sorted(results, key=lambda x: x.get('metadata', {}).get('carbs', 100) or 100)[:15]
         
-        # Default: return by vector similarity score
+        # Default: return by vector similarity score (or calorie-filtered if applied)
         return results
+    
+    def _extract_calorie_limit(self, query: str) -> Optional[int]:
+        """Extract calorie limit from query like 'under 500 cal' or 'less than 400 calories'."""
+        import re
+        
+        # Patterns to match calorie limits
+        patterns = [
+            r'under\s*(\d+)\s*cal',
+            r'below\s*(\d+)\s*cal',
+            r'less\s*than\s*(\d+)\s*cal',
+            r'max\s*(\d+)\s*cal',
+            r'(\d+)\s*cal\s*or\s*less',
+            r'under\s*(\d+)',
+            r'below\s*(\d+)',
+            r'<\s*(\d+)\s*cal',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, query)
+            if match:
+                limit = int(match.group(1))
+                logger.info(f"Extracted calorie limit: {limit}")
+                return limit
+        
+        # Check for general low calorie intent without specific number
+        if any(term in query for term in ['low cal', 'low-cal', 'light', 'diet', 'healthy']):
+            logger.info("General low-calorie intent detected, using 500 cal limit")
+            return 500
+        
+        return None
 
 
 class ExplanationService:
