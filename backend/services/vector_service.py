@@ -242,9 +242,10 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
             Index statistics dictionary
         """
         stats = self.index.describe_index_stats()
+        # Convert Pinecone response to serializable dict
         return {
             'index_name': self.index_name,
             'dimension': self.embedding_dimensions,
-            'total_vectors': stats.get('total_vector_count', 0),
-            'namespaces': stats.get('namespaces', {})
+            'total_vectors': int(stats.total_vector_count) if hasattr(stats, 'total_vector_count') else stats.get('total_vector_count', 0),
+            'index_fullness': float(stats.index_fullness) if hasattr(stats, 'index_fullness') else 0.0
         }
