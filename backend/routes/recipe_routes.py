@@ -211,14 +211,17 @@ def create_recipe_router(
             os.unlink(tmp_path)
     
     @router.post("/ingest/url")
-    async def ingest_from_url(url: str):
+    async def ingest_from_url(url: str, limit: int = 200):
         """Process Uber Eats data from URL with AI nutrition estimation.
+        
+        This endpoint properly extracts individual menu items from the nested
+        Excel structure (featuredItems, catalogItems, etc.)
         
         Args:
             url: URL to Excel file
+            limit: Maximum number of items to process (default 200)
         """
         import requests
-        import pandas as pd
         
         if not openai_service:
             raise HTTPException(status_code=500, detail="OpenAI service not configured")
@@ -232,10 +235,15 @@ def create_recipe_router(
                 tmp.write(response.content)
                 tmp_path = tmp.name
             
-            # Read Excel file
-            df = pd.read_excel(tmp_path)
-            logger.info(f"Read {len(df)} rows from Excel")
-            logger.info(f"Columns: {df.columns.tolist()}")
+            # Extract individual menu items using proper parsing
+            logger.info("Extracting individual menu items from Excel...")
+            raw_items = DataIngestionService.extract_menu_items_from_excel(tmp_path, limit=limit)
+            logger.info(f"Extracted {len(raw_items)} raw menu items")
+            
+            os.unlink(tmp_path)
+            
+            if not raw_items:
+                raise HTTPException(status_code=400, detail="No menu items found in the Excel file")
             
             # Clear existing data
             logger.info("Clearing existing Pinecone data...")
@@ -245,94 +253,41 @@ def create_recipe_router(
             with db_service.get_connection() as conn:
                 conn.execute("DELETE FROM recipes")
             
-            # Process items
+            # Estimate nutrition for each item using GPT-4o
             items = []
             processed = 0
             errors = 0
             
-            for idx, row in df.iterrows():
+            for raw_item in raw_items:
                 try:
-                    # Extract item data
-                    name = str(row.get('title', row.get('name', row.get('itemTitle', ''))))
-                    if not name or name == 'nan':
-                        continue
-                    
-                    description = str(row.get('itemDescription', row.get('description', '')))
-                    if description == 'nan':
-                        description = ''
-                    
-                    price_raw = row.get('price', row.get('itemPrice', 0))
-                    try:
-                        if isinstance(price_raw, str):
-                            price = float(price_raw.replace('$', '').replace(',', ''))
-                        else:
-                            price = float(price_raw) if price_raw else 0
-                    except:
-                        price = 0
-                    
-                    restaurant = str(row.get('restaurantName', row.get('restaurant', '')))
-                    if restaurant == 'nan':
-                        restaurant = 'Unknown Restaurant'
-                    
-                    image_url = str(row.get('imageUrl', row.get('image_url', '')))
-                    if image_url == 'nan':
-                        image_url = ''
-                    
-                    cuisine = str(row.get('cuisineList', row.get('cuisine', row.get('categories', ''))))
-                    if cuisine == 'nan':
-                        cuisine = 'Various'
-                    
-                    rating = row.get('rating', row.get('ratingValue', 0))
-                    try:
-                        rating = float(rating) if rating else 0
-                    except:
-                        rating = 0
-                    
-                    uber_uuid = str(row.get('uuid', ''))
-                    if uber_uuid == 'nan':
-                        uber_uuid = ''
+                    name = raw_item['name']
+                    description = raw_item.get('description', '')
                     
                     # Estimate nutrition using GPT-4o
-                    logger.info(f"[{processed+1}] Estimating nutrition for: {name[:50]}...")
+                    logger.info(f"[{processed+1}/{len(raw_items)}] Estimating nutrition for: {name[:40]}...")
                     nutrition = openai_service.estimate_nutrition(name, description)
                     
                     item = {
-                        'id': str(uuid.uuid4()),
-                        'name': name[:200],
-                        'description': description[:500],
-                        'restaurant_name': restaurant[:100],
-                        'cuisine_type': cuisine[:50] if cuisine else 'Various',
-                        'image_url': image_url,
-                        'price': price,
-                        'rating': rating,
-                        'uber_uuid': uber_uuid,
+                        **raw_item,
                         'estimated_calories': nutrition['calories'],
                         'estimated_protein': nutrition['protein'],
                         'estimated_carbs': nutrition['carbs'],
                         'estimated_fat': nutrition['fat'],
-                        'dietary_tags': nutrition.get('dietary_tags', []),
-                        'spice_level': 'Medium'
+                        'dietary_tags': nutrition.get('dietary_tags', [])
                     }
                     
                     items.append(item)
                     processed += 1
                     
-                    # Rate limit protection
+                    # Rate limit protection - sleep every 5 items
                     if processed % 5 == 0:
-                        logger.info(f"Processed {processed} items, sleeping...")
-                        time.sleep(2)
-                    
-                    # Limit to first 100 items for initial ingestion (to avoid long waits)
-                    if processed >= 100:
-                        logger.info("Reached 100 item limit for initial ingestion")
-                        break
+                        logger.info(f"Processed {processed}/{len(raw_items)} items...")
+                        time.sleep(1)
                     
                 except Exception as e:
-                    logger.error(f"Error processing row {idx}: {e}")
+                    logger.error(f"Error processing item {raw_item.get('name', 'unknown')}: {e}")
                     errors += 1
                     continue
-            
-            os.unlink(tmp_path)
             
             # Store in database
             logger.info(f"Storing {len(items)} items in SQLite...")
@@ -347,14 +302,16 @@ def create_recipe_router(
             return {
                 "message": f"Successfully processed {len(items)} menu items with AI-estimated nutrition",
                 "stats": {
-                    "total_rows": len(df),
-                    "processed": processed,
+                    "raw_items_extracted": len(raw_items),
+                    "processed_with_nutrition": processed,
                     "stored_in_db": len(items),
                     "vectorized": vectorized,
                     "errors": errors
                 }
             }
             
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error processing URL: {e}")
             raise HTTPException(status_code=500, detail=str(e))
