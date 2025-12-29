@@ -1,74 +1,83 @@
-"""Recipe API routes."""
+"""Recipe API routes with OpenAI-powered search and data ingestion."""
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from typing import List, Optional
-import os
 import tempfile
+import os
 import logging
+import uuid
+import time
 
 from models.recipe import Recipe, SearchQuery, SearchResult
-from services.vector_service import VectorService
-from services.explanation_service import ExplanationService
 from services.database_service import DatabaseService
-from services.data_ingestion_service import DataIngestionService
-from services.ai_search_service import EnhancedSearchPipeline
+from services.vector_service import VectorService
+from services.ai_search_service import EnhancedAISearchService, ExplanationService
+from services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
 
 
 def create_recipe_router(
-    db_service: DatabaseService,
+    db_service: DatabaseService, 
     vector_service: VectorService,
-    google_api_key: str = None
+    openai_api_key: str = None
 ) -> APIRouter:
-    """Create recipe routes.
+    """Create recipe router with injected dependencies.
     
     Args:
-        db_service: SQLite database service
-        vector_service: Vector search service
-        google_api_key: Google API key for enhanced AI search
+        db_service: Database service instance
+        vector_service: Vector search service instance
+        openai_api_key: OpenAI API key for enhanced search
         
     Returns:
         Configured APIRouter
     """
     router = APIRouter(prefix="/api", tags=["recipes"])
     
-    # Initialize enhanced search pipeline if API key provided
+    # Initialize enhanced AI search with OpenAI if key provided
     enhanced_search = None
-    if google_api_key:
-        enhanced_search = EnhancedSearchPipeline(
-            vector_service, db_service, google_api_key
-        )
-        logger.info("Enhanced AI Search Pipeline initialized")
+    openai_service = None
     
-    @router.get("/")
-    async def root():
-        """Root endpoint."""
-        return {"message": "Uber Eats AI Search - Find Your Perfect Meal"}
+    if openai_api_key:
+        try:
+            enhanced_search = EnhancedAISearchService(
+                vector_service=vector_service,
+                db_service=db_service,
+                openai_api_key=openai_api_key
+            )
+            openai_service = OpenAIService(api_key=openai_api_key)
+            logger.info("Enhanced AI Search enabled with OpenAI")
+        except Exception as e:
+            logger.error(f"Failed to initialize OpenAI search: {e}")
     
     @router.get("/stats")
     async def get_stats():
-        """Get database and vector index statistics."""
-        try:
-            total_count = db_service.get_count()
-            return {
-                "database": {
-                    "total_items": total_count
-                },
-                "status": "ready"
-            }
-        except Exception as e:
-            return {"error": str(e)}
-    
-    @router.post("/upload/excel")
-    async def upload_excel(file: UploadFile = File(...)):
-        """Upload and process Uber Eats Excel data.
+        """Get database and vector store statistics."""
+        db_count = db_service.get_count()
+        vector_stats = vector_service.get_index_stats()
         
-        This endpoint accepts an Excel file from Uber Eats scraper,
-        extracts menu items, estimates nutrition, and indexes them.
+        return {
+            "database": {
+                "type": "SQLite",
+                "recipe_count": db_count
+            },
+            "vector_store": vector_stats,
+            "search_engine": "OpenAI text-embedding-3-large + GPT-4o re-ranking"
+        }
+    
+    @router.post("/ingest/excel")
+    async def ingest_from_excel(file: UploadFile = File(...)):
+        """Process Uber Eats data from uploaded Excel file with AI nutrition estimation.
+        
+        This endpoint:
+        1. Clears existing data
+        2. Parses the Excel file
+        3. Uses GPT-4o to estimate nutritional values
+        4. Generates OpenAI embeddings
+        5. Stores in both SQLite and Pinecone
         """
-        if not file.filename.endswith(('.xlsx', '.xls')):
-            raise HTTPException(status_code=400, detail="File must be Excel format (.xlsx or .xls)")
+        if not openai_service:
+            raise HTTPException(status_code=500, detail="OpenAI service not configured")
         
         # Save uploaded file temporarily
         with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
@@ -77,34 +86,120 @@ def create_recipe_router(
             tmp_path = tmp.name
         
         try:
-            # Extract menu items
-            logger.info("Extracting menu items from Excel...")
-            items = DataIngestionService.extract_menu_items(tmp_path)
-            logger.info(f"Extracted {len(items)} menu items")
+            import pandas as pd
             
-            # Store in SQLite
-            stored_count = 0
+            # Read Excel file
+            df = pd.read_excel(tmp_path)
+            logger.info(f"Read {len(df)} rows from Excel")
+            logger.info(f"Columns: {df.columns.tolist()}")
+            
+            # Clear existing data
+            logger.info("Clearing existing data...")
+            vector_service.clear_index()
+            with db_service.get_connection() as conn:
+                conn.execute("DELETE FROM recipes")
+            
+            # Process items
+            items = []
+            processed = 0
+            errors = 0
+            
+            for idx, row in df.iterrows():
+                try:
+                    # Extract item data based on common column patterns
+                    name = str(row.get('title', row.get('name', row.get('itemTitle', ''))))
+                    if not name or name == 'nan':
+                        continue
+                    
+                    description = str(row.get('itemDescription', row.get('description', '')))
+                    if description == 'nan':
+                        description = ''
+                    
+                    price_raw = row.get('price', row.get('itemPrice', 0))
+                    try:
+                        # Handle price strings like "$15.99"
+                        if isinstance(price_raw, str):
+                            price = float(price_raw.replace('$', '').replace(',', ''))
+                        else:
+                            price = float(price_raw) if price_raw else 0
+                    except:
+                        price = 0
+                    
+                    restaurant = str(row.get('restaurantName', row.get('restaurant', '')))
+                    if restaurant == 'nan':
+                        restaurant = 'Unknown Restaurant'
+                    
+                    image_url = str(row.get('imageUrl', row.get('image_url', '')))
+                    if image_url == 'nan':
+                        image_url = ''
+                    
+                    cuisine = str(row.get('cuisineList', row.get('cuisine', row.get('categories', ''))))
+                    if cuisine == 'nan':
+                        cuisine = 'Various'
+                    
+                    rating = row.get('rating', row.get('ratingValue', 0))
+                    try:
+                        rating = float(rating) if rating else 0
+                    except:
+                        rating = 0
+                    
+                    uber_uuid = str(row.get('uuid', ''))
+                    if uber_uuid == 'nan':
+                        uber_uuid = ''
+                    
+                    # Estimate nutrition using GPT-4o
+                    logger.info(f"Estimating nutrition for: {name[:50]}...")
+                    nutrition = openai_service.estimate_nutrition(name, description)
+                    
+                    item = {
+                        'id': str(uuid.uuid4()),
+                        'name': name[:200],
+                        'description': description[:500],
+                        'restaurant_name': restaurant[:100],
+                        'cuisine_type': cuisine[:50] if cuisine else 'Various',
+                        'image_url': image_url,
+                        'price': price,
+                        'rating': rating,
+                        'uber_uuid': uber_uuid,
+                        'estimated_calories': nutrition['calories'],
+                        'estimated_protein': nutrition['protein'],
+                        'estimated_carbs': nutrition['carbs'],
+                        'estimated_fat': nutrition['fat'],
+                        'dietary_tags': nutrition.get('dietary_tags', []),
+                        'spice_level': 'Medium'
+                    }
+                    
+                    items.append(item)
+                    processed += 1
+                    
+                    # Process in small batches to avoid rate limits
+                    if processed % 10 == 0:
+                        logger.info(f"Processed {processed} items...")
+                        time.sleep(1)  # Rate limit protection
+                    
+                except Exception as e:
+                    logger.error(f"Error processing row {idx}: {e}")
+                    errors += 1
+                    continue
+            
+            # Store in database
+            logger.info(f"Storing {len(items)} items in SQLite...")
             for item in items:
                 db_service.upsert_recipe(item)
-                stored_count += 1
             
-            logger.info(f"Stored {stored_count} items in SQLite")
-            
-            # Convert to Recipe objects for vectorization
+            # Vectorize
+            logger.info("Generating embeddings and storing in Pinecone...")
             recipes = [Recipe(**item) for item in items]
-            
-            # Store in Pinecone (batch)
-            logger.info("Vectorizing and indexing items...")
-            vectorized = vector_service.store_recipes_batch(recipes, batch_size=50)
-            logger.info(f"Vectorized {vectorized} items")
+            vectorized = vector_service.store_recipes_batch(recipes, batch_size=20)
             
             return {
                 "message": f"Successfully processed {len(items)} menu items",
-                "details": {
-                    "extracted": len(items),
-                    "stored_in_db": stored_count,
+                "stats": {
+                    "total_rows": len(df),
+                    "processed": processed,
+                    "stored_in_db": len(items),
                     "vectorized": vectorized,
-                    "unique_restaurants": len(set(item['restaurant_name'] for item in items))
+                    "errors": errors
                 }
             }
             
@@ -112,44 +207,151 @@ def create_recipe_router(
             logger.error(f"Error processing Excel: {e}")
             raise HTTPException(status_code=500, detail=str(e))
         finally:
-            # Cleanup temp file
             os.unlink(tmp_path)
     
-    @router.post("/upload/url")
-    async def upload_from_url(url: str):
-        """Process Uber Eats data from URL.
+    @router.post("/ingest/url")
+    async def ingest_from_url(url: str):
+        """Process Uber Eats data from URL with AI nutrition estimation.
         
         Args:
             url: URL to Excel file
         """
         import requests
+        import pandas as pd
+        
+        if not openai_service:
+            raise HTTPException(status_code=500, detail="OpenAI service not configured")
         
         try:
-            # Download file
-            response = requests.get(url, timeout=60)
+            logger.info(f"Downloading file from: {url}")
+            response = requests.get(url, timeout=120)
             response.raise_for_status()
             
-            # Save temporarily
             with tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx') as tmp:
                 tmp.write(response.content)
                 tmp_path = tmp.name
             
-            # Extract and process
-            items = DataIngestionService.extract_menu_items(tmp_path)
+            # Read Excel file
+            df = pd.read_excel(tmp_path)
+            logger.info(f"Read {len(df)} rows from Excel")
+            logger.info(f"Columns: {df.columns.tolist()}")
             
-            # Store in SQLite
+            # Clear existing data
+            logger.info("Clearing existing Pinecone data...")
+            vector_service.clear_index()
+            
+            logger.info("Clearing existing SQLite data...")
+            with db_service.get_connection() as conn:
+                conn.execute("DELETE FROM recipes")
+            
+            # Process items
+            items = []
+            processed = 0
+            errors = 0
+            
+            for idx, row in df.iterrows():
+                try:
+                    # Extract item data
+                    name = str(row.get('title', row.get('name', row.get('itemTitle', ''))))
+                    if not name or name == 'nan':
+                        continue
+                    
+                    description = str(row.get('itemDescription', row.get('description', '')))
+                    if description == 'nan':
+                        description = ''
+                    
+                    price_raw = row.get('price', row.get('itemPrice', 0))
+                    try:
+                        if isinstance(price_raw, str):
+                            price = float(price_raw.replace('$', '').replace(',', ''))
+                        else:
+                            price = float(price_raw) if price_raw else 0
+                    except:
+                        price = 0
+                    
+                    restaurant = str(row.get('restaurantName', row.get('restaurant', '')))
+                    if restaurant == 'nan':
+                        restaurant = 'Unknown Restaurant'
+                    
+                    image_url = str(row.get('imageUrl', row.get('image_url', '')))
+                    if image_url == 'nan':
+                        image_url = ''
+                    
+                    cuisine = str(row.get('cuisineList', row.get('cuisine', row.get('categories', ''))))
+                    if cuisine == 'nan':
+                        cuisine = 'Various'
+                    
+                    rating = row.get('rating', row.get('ratingValue', 0))
+                    try:
+                        rating = float(rating) if rating else 0
+                    except:
+                        rating = 0
+                    
+                    uber_uuid = str(row.get('uuid', ''))
+                    if uber_uuid == 'nan':
+                        uber_uuid = ''
+                    
+                    # Estimate nutrition using GPT-4o
+                    logger.info(f"[{processed+1}] Estimating nutrition for: {name[:50]}...")
+                    nutrition = openai_service.estimate_nutrition(name, description)
+                    
+                    item = {
+                        'id': str(uuid.uuid4()),
+                        'name': name[:200],
+                        'description': description[:500],
+                        'restaurant_name': restaurant[:100],
+                        'cuisine_type': cuisine[:50] if cuisine else 'Various',
+                        'image_url': image_url,
+                        'price': price,
+                        'rating': rating,
+                        'uber_uuid': uber_uuid,
+                        'estimated_calories': nutrition['calories'],
+                        'estimated_protein': nutrition['protein'],
+                        'estimated_carbs': nutrition['carbs'],
+                        'estimated_fat': nutrition['fat'],
+                        'dietary_tags': nutrition.get('dietary_tags', []),
+                        'spice_level': 'Medium'
+                    }
+                    
+                    items.append(item)
+                    processed += 1
+                    
+                    # Rate limit protection
+                    if processed % 5 == 0:
+                        logger.info(f"Processed {processed} items, sleeping...")
+                        time.sleep(2)
+                    
+                    # Limit to first 100 items for initial ingestion (to avoid long waits)
+                    if processed >= 100:
+                        logger.info("Reached 100 item limit for initial ingestion")
+                        break
+                    
+                except Exception as e:
+                    logger.error(f"Error processing row {idx}: {e}")
+                    errors += 1
+                    continue
+            
+            os.unlink(tmp_path)
+            
+            # Store in database
+            logger.info(f"Storing {len(items)} items in SQLite...")
             for item in items:
                 db_service.upsert_recipe(item)
             
             # Vectorize
+            logger.info("Generating embeddings and storing in Pinecone...")
             recipes = [Recipe(**item) for item in items]
-            vectorized = vector_service.store_recipes_batch(recipes, batch_size=50)
-            
-            os.unlink(tmp_path)
+            vectorized = vector_service.store_recipes_batch(recipes, batch_size=20)
             
             return {
-                "message": f"Successfully processed {len(items)} menu items",
-                "vectorized": vectorized
+                "message": f"Successfully processed {len(items)} menu items with AI-estimated nutrition",
+                "stats": {
+                    "total_rows": len(df),
+                    "processed": processed,
+                    "stored_in_db": len(items),
+                    "vectorized": vectorized,
+                    "errors": errors
+                }
             }
             
         except Exception as e:
@@ -160,23 +362,23 @@ def create_recipe_router(
     async def upload_recipes():
         """Load sample recipes (for demo purposes)."""
         from utils.recipe_data import RECIPE_DATA
-        from services.nutrition_service import NutritionService
         
         uploaded_count = 0
         
         for recipe_data in RECIPE_DATA:
-            # Calculate nutrition
-            nutrition = NutritionService.calculate_nutrition(
-                recipe_data['ingredients']
-            )
-            recipe_data.update({
-                'estimated_calories': nutrition['calories'],
-                'estimated_protein': nutrition['protein'],
-                'estimated_carbs': nutrition['carbs'],
-                'estimated_fat': nutrition['fat']
-            })
+            # Estimate nutrition using OpenAI if available
+            if openai_service:
+                nutrition = openai_service.estimate_nutrition(
+                    recipe_data.get('name', ''),
+                    recipe_data.get('description', '')
+                )
+                recipe_data.update({
+                    'estimated_calories': nutrition['calories'],
+                    'estimated_protein': nutrition['protein'],
+                    'estimated_carbs': nutrition['carbs'],
+                    'estimated_fat': nutrition['fat']
+                })
             
-            # Create recipe object
             recipe = Recipe(**recipe_data)
             
             # Store in SQLite
@@ -193,17 +395,16 @@ def create_recipe_router(
     async def search_recipes(query: SearchQuery):
         """Search menu items using natural language with AI-powered matching.
         
-        Enhanced with:
-        - LLM Query Understanding: Parses intent, nutrition needs, dietary preferences
-        - Query Expansion: Expands search with related terms
-        - Hybrid Search: Combines semantic + metadata filtering
-        - LLM Re-ranking: Re-ranks results based on relevance
-        - Smart Explanations: Generates accurate match explanations
+        Features:
+        - OpenAI text-embedding-3-large for semantic search
+        - GPT-4o re-ranking with nutritional understanding
+        - STRICT FILTERING: For "high protein low carb" queries, only returns items where protein > carbs
+        - Smart explanations for each match
         """
         
-        # Use enhanced search pipeline if available
+        # Use enhanced search pipeline
         if enhanced_search:
-            logger.info(f"Using Enhanced AI Search for: {query.query}")
+            logger.info(f"Using OpenAI Enhanced Search for: {query.query}")
             results = enhanced_search.search(query.query, top_k=10)
             return [SearchResult(
                 recipe=r['recipe'],
@@ -211,7 +412,7 @@ def create_recipe_router(
                 match_explanation=r['match_explanation']
             ) for r in results]
         
-        # Fallback to basic search
+        # Fallback to basic vector search
         logger.info(f"Using basic search for: {query.query}")
         search_results = vector_service.search(
             query.query, 
@@ -222,13 +423,11 @@ def create_recipe_router(
         results: List[SearchResult] = []
         
         for match in search_results:
-            # Get full recipe from SQLite
             recipe_doc = db_service.get_recipe_by_id(match['id'])
             
             if recipe_doc:
                 recipe = Recipe(**recipe_doc)
                 
-                # Generate AI explanation
                 explanation = ExplanationService.generate_explanation(
                     query.query,
                     recipe
@@ -240,7 +439,6 @@ def create_recipe_router(
                     match_explanation=explanation
                 ))
         
-        # Sort by match score
         results.sort(key=lambda x: x.match_score, reverse=True)
         
         return results[:10]
@@ -268,7 +466,6 @@ def create_recipe_router(
         """Clear all data (use with caution)."""
         try:
             vector_service.clear_index()
-            # Clear SQLite
             with db_service.get_connection() as conn:
                 conn.execute("DELETE FROM recipes")
             return {"message": "All data cleared successfully"}
