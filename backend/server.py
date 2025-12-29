@@ -1,4 +1,4 @@
-"""Main FastAPI application with SQLite database."""
+"""Main FastAPI application with SQLite database and OpenAI integration."""
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,17 +26,29 @@ logger = logging.getLogger(__name__)
 db_path = ROOT_DIR / 'data' / 'ubereats.db'
 db_service = DatabaseService(str(db_path))
 
-# Initialize Vector Service
+# Get API keys
+openai_api_key = os.environ.get('OPENAI_API_KEY')
+pinecone_api_key = os.environ.get('PINECONE_API_KEY')
+
+if not openai_api_key:
+    logger.error("OPENAI_API_KEY not found in environment!")
+    raise ValueError("OPENAI_API_KEY is required")
+
+if not pinecone_api_key:
+    logger.error("PINECONE_API_KEY not found in environment!")
+    raise ValueError("PINECONE_API_KEY is required")
+
+# Initialize Vector Service with OpenAI
 vector_service = VectorService(
-    pinecone_api_key=os.environ['PINECONE_API_KEY'],
-    google_api_key=os.environ['GOOGLE_API_KEY']
+    pinecone_api_key=pinecone_api_key,
+    openai_api_key=openai_api_key
 )
 
 # Create FastAPI app
 app = FastAPI(
     title="Uber Eats AI Search",
-    description="AI-powered food discovery for Uber Eats",
-    version="1.0.0"
+    description="AI-powered food discovery for Uber Eats using OpenAI",
+    version="2.0.0"
 )
 
 # Add CORS middleware
@@ -48,11 +60,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers with Google API key for enhanced AI search
+# Include routers with OpenAI API key for enhanced AI search
 recipe_router = create_recipe_router(
     db_service, 
     vector_service,
-    google_api_key=os.environ.get('GOOGLE_API_KEY')
+    openai_api_key=openai_api_key
 )
 app.include_router(recipe_router)
 
