@@ -193,13 +193,26 @@ def create_recipe_router(
     async def search_recipes(query: SearchQuery):
         """Search menu items using natural language with AI-powered matching.
         
-        The AI understands:
-        - Nutrition queries: "high protein", "under 500 calories", "low carb"
-        - Cuisine types: "Indian food", "pizza", "sushi"
-        - Dietary needs: "vegetarian", "vegan", "gluten-free"
-        - Preferences: "spicy", "mild", "comfort food"
+        Enhanced with:
+        - LLM Query Understanding: Parses intent, nutrition needs, dietary preferences
+        - Query Expansion: Expands search with related terms
+        - Hybrid Search: Combines semantic + metadata filtering
+        - LLM Re-ranking: Re-ranks results based on relevance
+        - Smart Explanations: Generates accurate match explanations
         """
-        # Search in vector database
+        
+        # Use enhanced search pipeline if available
+        if enhanced_search:
+            logger.info(f"Using Enhanced AI Search for: {query.query}")
+            results = enhanced_search.search(query.query, top_k=10)
+            return [SearchResult(
+                recipe=r['recipe'],
+                match_score=r['match_score'],
+                match_explanation=r['match_explanation']
+            ) for r in results]
+        
+        # Fallback to basic search
+        logger.info(f"Using basic search for: {query.query}")
         search_results = vector_service.search(
             query.query, 
             top_k=15,
