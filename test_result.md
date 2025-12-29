@@ -101,3 +101,85 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: "Uber Eats AI Search app - user wants accurate search results for nutritional queries like 'high protein low carb'. The search must filter to show items where protein > carbs."
+
+backend:
+  - task: "OpenAI Integration - text-embedding-3-large for semantic search"
+    implemented: true
+    working: true
+    file: "/app/backend/services/openai_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "OpenAI service created with text-embedding-3-large (1536 dims) and GPT-4o for nutrition estimation and re-ranking"
+
+  - task: "Nutritional filtering - protein > carbs for relevant queries"
+    implemented: true
+    working: true
+    file: "/app/backend/services/openai_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Hard filter implemented in rerank_results() - for 'high protein low carb' queries, only items with protein > carbs are returned"
+
+  - task: "Data ingestion from Excel with proper menu item extraction"
+    implemented: true
+    working: true
+    file: "/app/backend/services/data_ingestion_service.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Fixed Excel parser to extract individual menu items from nested columns (featuredItems, catalogItems). 150 items ingested with GPT-4o nutrition estimates."
+
+  - task: "Search API with GPT-4o re-ranking"
+    implemented: true
+    working: true
+    file: "/app/backend/routes/recipe_routes.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "POST /api/search returns correctly filtered results. Tested 'high protein low carb' query - returned Wings (90g protein, 10g carbs)"
+
+frontend:
+  - task: "Search UI with nutritional display"
+    implemented: true
+    working: true
+    file: "/app/frontend/src/pages/HomePage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: true
+        agent: "main"
+        comment: "Frontend displays search results with protein/carbs/fat breakdown, dietary tags, and AI explanations"
+
+metadata:
+  created_by: "main_agent"
+  version: "2.0"
+  test_sequence: 1
+  run_ui: true
+
+test_plan:
+  current_focus:
+    - "Search API with GPT-4o re-ranking"
+    - "Search UI with nutritional display"
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+  - agent: "main"
+    message: "Completed OpenAI integration overhaul. Search now uses text-embedding-3-large for embeddings and GPT-4o for nutrition estimation and re-ranking. Strict filtering ensures protein > carbs for relevant queries. Tested via curl and screenshot - working correctly."
