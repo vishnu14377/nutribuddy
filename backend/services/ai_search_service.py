@@ -353,6 +353,16 @@ class EnhancedSearchPipeline:
         self.vector_service = vector_service
         self.db_service = db_service
         self.ai_service = AISearchService(google_api_key)
+        self._query_cache = {}  # Simple cache for query understanding
+    
+    def _deduplicate_by_name(self, candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate items with same name, keeping highest score."""
+        seen_names = {}
+        for c in candidates:
+            name = c.get('recipe_data', {}).get('name', '')
+            if name not in seen_names or c.get('vector_score', 0) > seen_names[name].get('vector_score', 0):
+                seen_names[name] = c
+        return list(seen_names.values())
     
     def search(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """
@@ -366,8 +376,13 @@ class EnhancedSearchPipeline:
         
         logger.info(f"Enhanced search for: {query}")
         
-        # Step 1: Understand query
-        understanding = self.ai_service.understand_query(query)
+        # Step 1: Understand query (use cache if available)
+        cache_key = query.lower().strip()
+        if cache_key in self._query_cache:
+            understanding = self._query_cache[cache_key]
+        else:
+            understanding = self.ai_service.understand_query(query)
+            self._query_cache[cache_key] = understanding
         
         # Step 2: Create enhanced query
         enhanced_query = self.ai_service.create_enhanced_query(query, understanding)
@@ -378,7 +393,7 @@ class EnhancedSearchPipeline:
         # Step 4: Vector search (get more candidates for re-ranking)
         vector_results = self.vector_service.search(
             enhanced_query, 
-            top_k=30,  # Get more for re-ranking
+            top_k=50,  # Get more for deduplication and re-ranking
             filters=filters if filters else None
         )
         
@@ -392,6 +407,10 @@ class EnhancedSearchPipeline:
                     'vector_score': result['score'],
                     'recipe_data': recipe_data
                 })
+        
+        # Step 5.5: Deduplicate by name
+        candidates = self._deduplicate_by_name(candidates)
+        logger.info(f"After deduplication: {len(candidates)} unique items")
         
         # Step 6: Re-rank with LLM
         reranked = self.ai_service.rerank_results(
