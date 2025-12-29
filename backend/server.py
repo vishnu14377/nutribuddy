@@ -48,8 +48,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-recipe_router = create_recipe_router(db_service, vector_service)
+# Include routers with Google API key for enhanced AI search
+recipe_router = create_recipe_router(
+    db_service, 
+    vector_service,
+    google_api_key=os.environ.get('GOOGLE_API_KEY')
+)
 app.include_router(recipe_router)
 
 
