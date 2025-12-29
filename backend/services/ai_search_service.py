@@ -24,7 +24,7 @@ class AISearchService:
     def __init__(self, google_api_key: str):
         """Initialize with Google API key."""
         genai.configure(api_key=google_api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         
     def understand_query(self, query: str) -> Dict[str, Any]:
         """
