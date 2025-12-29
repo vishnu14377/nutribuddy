@@ -204,6 +204,21 @@ class ExplanationService:
         calories = recipe.estimated_calories or 0
         fat = recipe.estimated_fat or 0
         
+        # Calorie-focused queries (check first)
+        if any(term in query_lower for term in ['under', 'below', 'less than', 'cal', 'light', 'diet', 'low cal']):
+            if calories < 300:
+                parts.append(f"Very light option at only {calories} calories")
+            elif calories < 500:
+                parts.append(f"Light meal with just {calories} calories")
+            elif calories < 700:
+                parts.append(f"Moderate {calories} calories")
+            else:
+                parts.append(f"{calories} calories")
+            
+            # Add macros summary
+            parts.append(f"{protein}g protein • {carbs}g carbs")
+            return " • ".join(parts)
+        
         # High protein low carb specific explanation
         if ('protein' in query_lower and 'carb' in query_lower) or 'keto' in query_lower:
             ratio = protein / max(carbs, 1)
