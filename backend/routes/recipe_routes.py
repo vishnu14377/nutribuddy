@@ -11,6 +11,7 @@ from services.vector_service import VectorService
 from services.explanation_service import ExplanationService
 from services.database_service import DatabaseService
 from services.data_ingestion_service import DataIngestionService
+from services.ai_search_service import EnhancedSearchPipeline
 
 logger = logging.getLogger(__name__)
 
