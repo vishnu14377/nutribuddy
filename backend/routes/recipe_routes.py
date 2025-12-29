@@ -13,6 +13,7 @@ from services.database_service import DatabaseService
 from services.vector_service import VectorService
 from services.ai_search_service import EnhancedAISearchService, ExplanationService
 from services.openai_service import OpenAIService
+from services.data_ingestion_service import DataIngestionService
 
 logger = logging.getLogger(__name__)
 
