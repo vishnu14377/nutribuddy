@@ -123,10 +123,15 @@ def create_recipe_router(
             ) for r in results]
         
         search_results = vector_service.search(query.query, top_k=15)
-        results = []
         
+        # Batch fetch all recipes (fix N+1 query)
+        recipe_ids = [match['id'] for match in search_results]
+        recipe_docs = db_service.get_recipes_by_ids(recipe_ids)
+        recipes_dict = {doc['id']: doc for doc in recipe_docs}
+        
+        results = []
         for match in search_results:
-            recipe_doc = db_service.get_recipe_by_id(match['id'])
+            recipe_doc = recipes_dict.get(match['id'])
             if recipe_doc:
                 recipe = Recipe(**recipe_doc)
                 results.append(SearchResult(
