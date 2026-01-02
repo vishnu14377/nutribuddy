@@ -34,7 +34,9 @@ export const RecipeCard = ({ result, index }) => {
             <div className="text-3xl font-bold text-gray-800">{recipe.estimated_calories}</div>
             <div className="text-xs text-gray-500">cal</div>
             {recipe.price > 0 && (
-              <div className="mt-2 text-lg font-bold text-green-600">${recipe.price?.toFixed(2)}</div>
+              <div className="mt-2 text-lg font-bold text-green-600">
+                ${(recipe.price > 100 ? recipe.price / 100 : recipe.price).toFixed(2)}
+              </div>
             )}
           </div>
         </div>
