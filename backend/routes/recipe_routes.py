@@ -72,8 +72,7 @@ def create_recipe_router(
                 raise HTTPException(status_code=400, detail="No items found")
             
             vector_service.clear_index()
-            with db_service.get_connection() as conn:
-                conn.execute("DELETE FROM recipes")
+            db_service.clear_all()
             
             items = []
             for i, raw_item in enumerate(raw_items):
