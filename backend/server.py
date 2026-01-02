@@ -17,7 +17,8 @@ load_dotenv(ROOT_DIR / '.env')
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-db_service = DatabaseService(str(ROOT_DIR / 'data' / 'ubereats.db'))
+db_path = os.environ.get('DB_PATH', 'data/nutribuddy.db')
+db_service = DatabaseService(str(ROOT_DIR / db_path))
 
 openai_api_key = os.environ.get('OPENAI_API_KEY')
 pinecone_api_key = os.environ.get('PINECONE_API_KEY')
