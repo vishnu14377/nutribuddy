@@ -159,8 +159,7 @@ def create_recipe_router(
     async def clear_all():
         """Clear all data."""
         vector_service.clear_index()
-        with db_service.get_connection() as conn:
-            conn.execute("DELETE FROM recipes")
+        db_service.clear_all()
         return {"message": "Cleared"}
     
     return router
