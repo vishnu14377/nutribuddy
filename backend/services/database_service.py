@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class DatabaseService:
     """MongoDB database service for managing menu items."""
     
-    def __init__(self, mongo_url: str = None, db_name: str = "nutribuddy"):
+    def __init__(self, mongo_url: str = None, db_name: str = None):
         """Initialize MongoDB connection.
         
         Args:
@@ -21,7 +21,7 @@ class DatabaseService:
             db_name: Database name
         """
         self.mongo_url = mongo_url or os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-        self.db_name = db_name
+        self.db_name = db_name or os.environ.get('DB_NAME', 'nutribuddy')
         
         # Sync client for regular operations
         self.client = MongoClient(self.mongo_url)
