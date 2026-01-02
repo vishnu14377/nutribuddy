@@ -44,7 +44,18 @@ class EnhancedAISearchService:
         filtered_results = self._apply_nutritional_filters(query, vector_results)
         logger.info(f"After filtering: {len(filtered_results)} results")
         
-        # Step 3: Build final results with local explanations (instant)
+        # Step 3: Batch fetch recipes (fix N+1 query)
+        unique_ids = []
+        seen_ids = set()
+        for result in filtered_results[:top_k]:
+            if result['id'] not in seen_ids:
+                seen_ids.add(result['id'])
+                unique_ids.append(result['id'])
+        
+        recipe_docs = self.db_service.get_recipes_by_ids(unique_ids)
+        recipes_dict = {doc['id']: doc for doc in recipe_docs}
+        
+        # Step 4: Build final results with local explanations (instant)
         final_results = []
         seen_ids = set()
         
@@ -55,7 +66,7 @@ class EnhancedAISearchService:
                 continue
             seen_ids.add(recipe_id)
             
-            recipe_doc = self.db_service.get_recipe_by_id(recipe_id)
+            recipe_doc = recipes_dict.get(recipe_id)
             
             if recipe_doc:
                 recipe = Recipe(**recipe_doc)
