@@ -45,8 +45,20 @@ class VectorService:
             stats = index.describe_index_stats()
             logger.info(f"Index {self.index_name} exists with stats: {stats}")
         else:
-            # Index doesn't exist - this shouldn't happen with our hardcoded index
-            raise ValueError(f"Pinecone index {self.index_name} not found!")
+            # Create the index if it doesn't exist
+            logger.info(f"Creating Pinecone index: {self.index_name}")
+            self.pc.create_index(
+                name=self.index_name,
+                dimension=self.embedding_dimensions,
+                metric='cosine',
+                spec=ServerlessSpec(
+                    cloud='aws',
+                    region='us-east-1'
+                )
+            )
+            logger.info(f"Successfully created Pinecone index: {self.index_name}")
+            # Wait for index to be ready
+            time.sleep(5)
     
     def generate_embedding(self, text: str) -> List[float]:
         """Generate embedding vector using OpenAI.
