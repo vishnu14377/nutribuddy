@@ -1,137 +1,113 @@
-"""MongoDB database service for menu item storage."""
+"""SQLite database service for menu items."""
 
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import MongoClient
+import sqlite3
 import json
 import os
+from pathlib import Path
 from typing import List, Dict, Any, Optional
+from contextlib import contextmanager
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 class DatabaseService:
-    """MongoDB database service for managing menu items."""
+    """SQLite database service."""
     
-    def __init__(self, mongo_url: str = None, db_name: str = None):
-        """Initialize MongoDB connection.
-        
-        Args:
-            mongo_url: MongoDB connection URL
-            db_name: Database name
-        """
-        self.mongo_url = mongo_url or os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-        self.db_name = db_name or os.environ.get('DB_NAME', 'nutribuddy')
-        
-        # Sync client for regular operations
-        self.client = MongoClient(self.mongo_url)
-        self.db = self.client[self.db_name]
-        self.recipes = self.db.recipes
-        
-        # Create indexes
-        self.recipes.create_index("id", unique=True)
-        self.recipes.create_index("restaurant_name")
-        self.recipes.create_index("cuisine_type")
-        
-        logger.info(f"MongoDB connected: {self.db_name}")
+    def __init__(self, db_path: str = None):
+        db_path = db_path or os.environ.get('DB_PATH', 'data/nutribuddy.db')
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = db_path
+        self._init_db()
+        logger.info(f"SQLite connected: {db_path}")
     
-    def upsert_recipe(self, recipe_data: Dict[str, Any]) -> None:
-        """Insert or update a recipe.
-        
-        Args:
-            recipe_data: Recipe data dictionary
-        """
-        recipe_id = recipe_data.get('id')
-        if not recipe_id:
-            return
-        
-        self.recipes.update_one(
-            {"id": recipe_id},
-            {"$set": recipe_data},
-            upsert=True
-        )
+    @contextmanager
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            conn.close()
+    
+    def _init_db(self):
+        with self.get_connection() as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS recipes (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    description TEXT,
+                    ingredients TEXT,
+                    cuisine_type TEXT,
+                    spice_level TEXT,
+                    dietary_tags TEXT,
+                    estimated_calories INTEGER,
+                    estimated_protein REAL,
+                    estimated_carbs REAL,
+                    estimated_fat REAL,
+                    image_url TEXT,
+                    restaurant_name TEXT,
+                    rating REAL,
+                    price REAL
+                )
+            ''')
+    
+    def upsert_recipe(self, data: Dict[str, Any]) -> None:
+        with self.get_connection() as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO recipes 
+                (id, name, description, ingredients, cuisine_type, spice_level, dietary_tags,
+                 estimated_calories, estimated_protein, estimated_carbs, estimated_fat,
+                 image_url, restaurant_name, rating, price)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                data.get('id'), data.get('name'), data.get('description'),
+                json.dumps(data.get('ingredients', [])), data.get('cuisine_type'),
+                data.get('spice_level'), json.dumps(data.get('dietary_tags', [])),
+                data.get('estimated_calories'), data.get('estimated_protein'),
+                data.get('estimated_carbs'), data.get('estimated_fat'),
+                data.get('image_url'), data.get('restaurant_name'),
+                data.get('rating'), data.get('price')
+            ))
     
     def get_recipe_by_id(self, recipe_id: str) -> Optional[Dict[str, Any]]:
-        """Get a recipe by ID.
-        
-        Args:
-            recipe_id: Recipe UUID
-            
-        Returns:
-            Recipe data dictionary or None
-        """
-        doc = self.recipes.find_one({"id": recipe_id}, {"_id": 0})
-        return doc
+        with self.get_connection() as conn:
+            row = conn.execute('SELECT * FROM recipes WHERE id = ?', (recipe_id,)).fetchone()
+            return self._row_to_dict(row) if row else None
     
     def get_recipes_by_ids(self, recipe_ids: List[str]) -> List[Dict[str, Any]]:
-        """Get multiple recipes by IDs (batch operation).
-        
-        Args:
-            recipe_ids: List of recipe UUIDs
-            
-        Returns:
-            List of recipe dictionaries
-        """
-        docs = list(self.recipes.find(
-            {"id": {"$in": recipe_ids}},
-            {"_id": 0}
-        ))
-        return docs
+        if not recipe_ids:
+            return []
+        with self.get_connection() as conn:
+            placeholders = ','.join('?' * len(recipe_ids))
+            rows = conn.execute(f'SELECT * FROM recipes WHERE id IN ({placeholders})', recipe_ids).fetchall()
+            return [self._row_to_dict(row) for row in rows]
     
     def get_all_recipes(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get all recipes.
-        
-        Args:
-            limit: Maximum number of recipes to return
-            
-        Returns:
-            List of recipe dictionaries
-        """
-        docs = list(self.recipes.find({}, {"_id": 0}).limit(limit))
-        return docs
+        with self.get_connection() as conn:
+            rows = conn.execute('SELECT * FROM recipes LIMIT ?', (limit,)).fetchall()
+            return [self._row_to_dict(row) for row in rows]
     
-    def search_by_restaurant(self, restaurant_name: str) -> List[Dict[str, Any]]:
-        """Search recipes by restaurant name.
-        
-        Args:
-            restaurant_name: Restaurant name to search
-            
-        Returns:
-            List of matching recipes
-        """
-        docs = list(self.recipes.find(
-            {"restaurant_name": {"$regex": restaurant_name, "$options": "i"}},
-            {"_id": 0}
-        ).limit(50))
-        return docs
-    
-    def get_by_cuisine(self, cuisine_type: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get recipes by cuisine type.
-        
-        Args:
-            cuisine_type: Cuisine type to filter
-            limit: Maximum results
-            
-        Returns:
-            List of matching recipes
-        """
-        docs = list(self.recipes.find(
-            {"cuisine_type": {"$regex": cuisine_type, "$options": "i"}},
-            {"_id": 0}
-        ).limit(limit))
-        return docs
+    def _row_to_dict(self, row) -> Dict[str, Any]:
+        data = dict(row)
+        for field in ['ingredients', 'dietary_tags']:
+            if data.get(field):
+                try:
+                    data[field] = json.loads(data[field])
+                except:
+                    data[field] = []
+            else:
+                data[field] = []
+        return data
     
     def get_count(self) -> int:
-        """Get total recipe count."""
-        return self.recipes.count_documents({})
+        with self.get_connection() as conn:
+            return conn.execute('SELECT COUNT(*) FROM recipes').fetchone()[0]
     
     def clear_all(self) -> None:
-        """Delete all recipes."""
-        self.recipes.delete_many({})
-        logger.info("All recipes deleted from MongoDB")
+        with self.get_connection() as conn:
+            conn.execute('DELETE FROM recipes')
     
     def close(self):
-        """Close MongoDB connection."""
-        if self.client:
-            self.client.close()
-            logger.info("MongoDB connection closed")
+        pass
