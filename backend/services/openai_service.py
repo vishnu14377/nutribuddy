@@ -105,6 +105,13 @@ or gluten-free if that EXACT tag appears in its [verified tags]. If a user has
 a dietary restriction and no provided dish carries the matching tag, say so
 honestly instead of guessing — never assert an unverified dietary status.
 
+GROUNDING (hard rule) — when recommending something to ORDER, you may ONLY
+name dishes that appear verbatim in the provided catalog list above. If no
+provided dish answers the question, say the catalog has no match right now —
+NEVER name a dish from general knowledge as if it were orderable here.
+General food knowledge (e.g. "what nutrients are in salmon") is fine; implying
+availability of dishes not in the list is not.
+
 Respond in JSON ONLY: {"on_topic": <bool>, "answer": "<your reply>"}"""
 
         try:

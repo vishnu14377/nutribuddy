@@ -36,9 +36,34 @@ class TestCalorieParsing:
     def test_extracts_explicit_limits(self, query, expected):
         assert parse_intent(query).calorie_limit == expected
 
-    @pytest.mark.parametrize('query', ['low cal lunch', 'light dinner', 'diet friendly', 'healthy bowl'])
+    @pytest.mark.parametrize('query', ['low cal lunch', 'light dinner', 'healthy bowl'])
     def test_general_low_calorie_intent_defaults_to_500(self, query):
         assert parse_intent(query).calorie_limit == 500
+
+    def test_diet_is_a_diet_type_word_not_a_calorie_cap(self):
+        # Round-5: 'keto diet ... around 700 calories' was capped at 500
+        intent = parse_intent('high protein keto diet dinner around 700 calories')
+        assert intent.calorie_limit == int(700 * 1.15)
+        assert parse_intent('my diet meal').calorie_limit is None
+
+    @pytest.mark.parametrize('query', ['burger under $0', 'meal under 0g carbs', 'meal max 0g fat'])
+    def test_zero_limits_are_impossible_not_crashes(self, query):
+        # Round-5: these 502'd with ZeroDivisionError in the fallback path
+        assert parse_intent(query).impossible is True
+
+    def test_green_results_always_precede_amber(self):
+        # Round-5: fries outranked the only true paneer match
+        candidates = [
+            make_candidate('French Fries', score=0.60, description='crispy fries'),
+            make_candidate('Paneer Tikka Skewers', score=0.44, tags='vegetarian,high-protein',
+                           protein=24, description='cottage cheese skewers', platform='biterush'),
+        ]
+        results = run_search(candidates, 'paneer')
+        assert results[0]['recipe'].name == 'Paneer Tikka Skewers'
+        assert results[0]['meets_constraints'] is True
+        fries = next(r for r in results if r['recipe'].name == 'French Fries')
+        assert fries['meets_constraints'] is False
+        assert 'Different dish' in fries['match_explanation']
 
     def test_under_zero_is_impossible(self):
         assert parse_intent('under 0 calories').impossible is True

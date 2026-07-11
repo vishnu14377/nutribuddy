@@ -67,11 +67,12 @@ DISH_NOUNS = (
     'pasta', 'salad', 'sandwich', 'wrap', 'wings', 'soup', 'dessert',
     'pancake', 'omelette', 'omelet', 'kebab', 'shake', 'smoothie', 'poke',
     'paneer', 'tofu', 'falafel', 'gyro', 'sub ', 'shawarma', 'curry', 'ramen',
+    'bowl', 'plate',
 )
-# Sodas and sweets never "fit" a meal query
+# Sodas and sweets never "fit" a meal or dish query
 DRINK_DESSERT_RE = re.compile(
     r'soda|cola|snapple|ramune|juice\b|lemonade|brownie|cookie|cake\b|donut|'
-    r'ice cream|milkshake|candy', re.IGNORECASE
+    r'ice cream|milkshakes?|shakes?\b|candy', re.IGNORECASE
 )
 MEAL_WORDS = ('breakfast', 'lunch', 'dinner', 'meal', 'entree')
 
@@ -97,7 +98,9 @@ VEGETARIAN_DISH_TERMS = (
     'paneer', 'tofu', 'tempeh', 'seitan', 'falafel', 'dal ', 'daal', 'chana',
     'saag', 'halloumi', 'aloo gobi', 'palak',
 )
-LOW_CAL_INTENT_TERMS = ('low cal', 'low-cal', 'light', 'diet', 'healthy')
+# 'diet' is deliberately absent: it's a diet-TYPE word ("keto diet") — round-5
+# found it imposing a phantom 500-cal cap that overrode users' stated targets.
+LOW_CAL_INTENT_TERMS = ('low cal', 'low-cal', 'light', 'healthy')
 HIGH_FAT_TERMS = ('high fat', 'high-fat', 'alta en grasa')
 VALUE_TERMS = ('cheap', 'budget', 'best value', 'affordable', 'value for money', 'good value')
 
@@ -286,9 +289,27 @@ def parse_intent(query: str) -> QueryIntent:
                 intent.calorie_limit = limit
             break
 
+    # "around/about 700 calories" is a target, not a cap — allow ~15% headroom
     if intent.calorie_limit is None and not intent.impossible:
+        m = re.search(r'(?:around|about|roughly|~)\s*(\d+)\s*k?cal(?:orie)?s?', work)
+        if m and int(m.group(1)) > 0:
+            intent.calorie_limit = int(int(m.group(1)) * 1.15)
+
+    # Only infer a generic light-meal cap when the user gave NO calorie figure
+    if intent.calorie_limit is None and not intent.impossible \
+            and not re.search(r'\d+\s*k?cal', work):
         if any(term in work for term in LOW_CAL_INTENT_TERMS):
             intent.calorie_limit = GENERAL_LOW_CAL_LIMIT
+
+    # Zero-valued limits are impossible asks, never divisors ("under $0",
+    # "0g carbs" crashed the fallback path with ZeroDivisionError in round 5)
+    for attr in ('max_carbs', 'max_fat', 'price_limit'):
+        val = getattr(intent, attr)
+        if val is not None and val <= 0:
+            intent.impossible = True
+            setattr(intent, attr, None)
+    if intent.min_protein is not None and intent.min_protein <= 0:
+        intent.min_protein = None
 
     # 4. Protein/carb keyword intents (only when no explicit number given)
     if intent.min_protein is None and any(t in work for t in PROTEIN_TERMS):
@@ -402,47 +423,68 @@ class EnhancedAISearchService:
 
         qualified = [c for c in pool if self._passes(c, intent)]
 
-        # Each entry is (candidate, base_meets). Ranking rules:
-        # - qualified: orderable items first (a Top Pick the user can't buy
-        #   breaks the promise), vector score within tiers, at most
-        #   MAX_UNORDERABLE_RESULTS partner items per page
-        # - thin results (<3): append labeled near-misses instead of a cliff
+        # Dish-type / drink gates run BEFORE ranking so green results always
+        # precede amber ones on the page (round 5: French Fries outranked the
+        # only true paneer match because gating happened after ranking).
+        query_lower_full = query.lower()
+        named_dishes = [n for n in DISH_NOUNS if n in query_lower_full]
+        has_meal_word = any(w in query_lower_full for w in MEAL_WORDS)
+
+        def dish_gate_ok(c) -> bool:
+            md = c.get('metadata', {})
+            # Cuisine deliberately excluded: a pizzeria brownie is not pizza
+            text = f"{md.get('name', '')} {md.get('description', '')}".lower()
+            if named_dishes and not any(n in text for n in named_dishes):
+                return False
+            if (has_meal_word or named_dishes) and DRINK_DESSERT_RE.search(text):
+                return False
+            return True
+
+        # Each entry is (candidate, base_meets, dish_mismatch). Ranking rules:
+        # - green (constraints + dish type): orderable first, score within
+        #   tiers, partner items capped but guaranteed page slots
+        # - dish mismatches (constraints pass, different dish): after green
+        # - thin orderable greens (<3): labeled near-misses instead of a cliff
         # - full fallback: closest-first ordering, never re-sorted by score
         if qualified:
+            green = [c for c in qualified if dish_gate_ok(c)]
+            mismatched = [c for c in qualified if not dish_gate_ok(c)]
             if intent.value_seek:
-                ranked = [(c, True) for c in self._rank_by_value(qualified, intent)]
+                ranked = [(c, True, False) for c in self._rank_by_value(green, intent)]
             else:
-                ranked = [(c, True) for c in self._rank_and_cap(qualified)]
-            # Thin ORDERABLE result sets get labeled near-misses instead of a
-            # cliff — the user must always leave with an actionable path, even
-            # when the only strict fits are unorderable partner items. Value
-            # queries skip this (an unpriced near-miss is pure noise).
-            if (len([c for c in qualified if _is_orderable(c)]) < 3
+                ranked = [(c, True, False) for c in self._rank_and_cap(green)]
+            ranked += [(c, False, True) for c in
+                       sorted(mismatched, key=lambda c: c['score'], reverse=True)]
+            if (len([c for c in green if _is_orderable(c)]) < 3
                     and intent.has_any_constraint() and not intent.value_seek):
                 qualified_ids = {c['id'] for c in qualified}
                 remainder = [c for c in pool if c['id'] not in qualified_ids]
                 orderable_remainder = [c for c in remainder if _is_orderable(c)]
                 extras = self._closest_fallback(orderable_remainder or remainder, intent)
-                ranked += [(c, False) for c in extras[:3]]
+                ranked += [(c, False, False) for c in extras[:3]]
         elif intent.has_any_constraint():
-            ranked = [(c, False) for c in self._closest_fallback(pool, intent)]
+            ranked = [(c, False, False) for c in self._closest_fallback(pool, intent)]
             logger.info(f"No items satisfy {intent.constraint_labels()} — returning {len(ranked)} closest, flagged")
         else:
-            ranked = [(c, True) for c in self._rank_and_cap(pool)]
+            green = [c for c in pool if dish_gate_ok(c)]
+            mismatched = [c for c in pool if not dish_gate_ok(c)]
+            ranked = [(c, True, False) for c in self._rank_and_cap(green)]
+            ranked += [(c, False, True) for c in
+                       sorted(mismatched, key=lambda c: c['score'], reverse=True)]
 
         # Dedup + batch fetch (avoids N+1 queries)
         top_results = []
         seen_ids = set()
-        for result, base_meets in ranked[:top_k]:
+        for result, base_meets, dish_mismatch in ranked[:top_k]:
             if result['id'] not in seen_ids:
                 seen_ids.add(result['id'])
-                top_results.append((result, base_meets))
+                top_results.append((result, base_meets, dish_mismatch))
 
-        recipe_docs = self.db_service.get_recipes_by_ids([r['id'] for r, _ in top_results])
+        recipe_docs = self.db_service.get_recipes_by_ids([r['id'] for r, _, _ in top_results])
         recipes_dict = {doc['id']: doc for doc in recipe_docs}
 
         final_results = []
-        for result, base_meets in top_results:
+        for result, base_meets, dish_mismatch in top_results:
             recipe_doc = recipes_dict.get(result['id'])
             if not recipe_doc:
                 continue
@@ -476,22 +518,18 @@ class EnhancedAISearchService:
             if item_meets and result['score'] < SOFT_RELEVANCE_FLOOR:
                 item_meets = False
 
-            # Dish-type gate: "low calorie pizza" must never green-badge a
-            # brownie; meal queries must never green-badge a soda. Cuisine is
-            # deliberately EXCLUDED from the haystack — a brownie sold by a
-            # pizzeria is still not pizza.
-            item_text = f"{recipe.name} {recipe.description or ''}".lower()
-            query_lower_full = query.lower()
-            named_dishes = [n for n in DISH_NOUNS if n in query_lower_full]
-            if item_meets and named_dishes and not any(n in item_text for n in named_dishes):
+            if dish_mismatch:
+                # Constraints passed but it's a different dish than asked for —
+                # say exactly that instead of implying a constraint miss.
                 item_meets = False
-            if item_meets and any(w in query_lower_full for w in MEAL_WORDS) \
-                    and DRINK_DESSERT_RE.search(item_text):
-                item_meets = False
-
-            explanation = ExplanationService.generate_explanation(
-                query, recipe, intent=intent, meets_constraints=item_meets
-            )
+                explanation = ExplanationService.generate_explanation(
+                    query, recipe, intent=intent, meets_constraints=True
+                )
+                explanation = f"Different dish than you searched — fits your other limits • {explanation}"
+            else:
+                explanation = ExplanationService.generate_explanation(
+                    query, recipe, intent=intent, meets_constraints=item_meets
+                )
             if unverified_diet:
                 diet_word = 'vegan' if intent.vegan else 'vegetarian'
                 explanation = f"{diet_word.capitalize()} status unverified (no meat listed) • {explanation}"
@@ -598,20 +636,22 @@ class EnhancedAISearchService:
             pool = [c for c in pool if not MULTI_SERVING_NAME_RE.search(md(c, 'name', ''))] or pool
 
         def shortfall(c) -> float:
+            # max(limit, 0.01): belt-and-suspenders — zero limits are filtered
+            # at parse time, but a divisor of zero must never 502 the endpoint
             total = 0.0
             if intent.calorie_limit is not None:
-                total += max(0, md(c, 'calories') - intent.calorie_limit) / intent.calorie_limit
+                total += max(0, md(c, 'calories') - intent.calorie_limit) / max(intent.calorie_limit, 0.01)
             if intent.max_carbs is not None:
-                total += max(0, md(c, 'carbs') - intent.max_carbs) / intent.max_carbs
+                total += max(0, md(c, 'carbs') - intent.max_carbs) / max(intent.max_carbs, 0.01)
             if intent.min_protein is not None:
-                total += max(0, intent.min_protein - md(c, 'protein')) / intent.min_protein
+                total += max(0, intent.min_protein - md(c, 'protein')) / max(intent.min_protein, 0.01)
             if intent.min_fat is not None:
-                total += max(0, intent.min_fat - md(c, 'fat')) / intent.min_fat
+                total += max(0, intent.min_fat - md(c, 'fat')) / max(intent.min_fat, 0.01)
             if intent.max_fat is not None:
-                total += max(0, md(c, 'fat') - intent.max_fat) / intent.max_fat
+                total += max(0, md(c, 'fat') - intent.max_fat) / max(intent.max_fat, 0.01)
             if intent.price_limit is not None:
                 if md(c, 'currency', '') == 'USD' and md(c, 'price') > 0:
-                    total += max(0, md(c, 'price') - intent.price_limit) / intent.price_limit
+                    total += max(0, md(c, 'price') - intent.price_limit) / max(intent.price_limit, 0.01)
                 else:
                     total += 1.0  # unpriced/foreign items are far from a budget ask
             return total
