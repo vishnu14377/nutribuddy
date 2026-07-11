@@ -107,17 +107,9 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
         
         return text.strip()
     
-    def store_recipe(self, recipe: Recipe) -> None:
-        """Store recipe in vector database.
-        
-        Args:
-            recipe: Recipe to store
-        """
-        searchable_text = self.create_searchable_text(recipe)
-        embedding = self.generate_embedding(searchable_text)
-        
-        # Prepare metadata (Pinecone has size limits)
-        metadata = {
+    def _build_metadata(self, recipe: Recipe) -> Dict[str, Any]:
+        """Build Pinecone metadata for a recipe (Pinecone has size limits)."""
+        return {
             'name': recipe.name[:200] if recipe.name else '',
             'restaurant': (recipe.restaurant_name or '')[:100],
             'cuisine_type': (recipe.cuisine_type or '')[:50],
@@ -129,69 +121,41 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
             'fat': recipe.estimated_fat or 0,
             'price': recipe.price or 0
         }
-        
-        self.index.upsert(
-            vectors=[{
-                'id': recipe.id,
-                'values': embedding,
-                'metadata': metadata
-            }]
-        )
-    
+
     def store_recipes_batch(self, recipes: List[Recipe], batch_size: int = 50) -> int:
         """Store multiple recipes in batches.
-        
+
+        Embeddings are generated one API call per batch (not per recipe),
+        so ingesting N items costs ~N/batch_size embedding requests.
+
         Args:
             recipes: List of recipes to store
             batch_size: Number of recipes per batch
-            
+
         Returns:
             Number of recipes stored
         """
         stored = 0
-        vectors = []
-        
-        for i, recipe in enumerate(recipes):
+
+        for start in range(0, len(recipes), batch_size):
+            batch = recipes[start:start + batch_size]
             try:
-                searchable_text = self.create_searchable_text(recipe)
-                embedding = self.generate_embedding(searchable_text)
-                
-                metadata = {
-                    'name': recipe.name[:200] if recipe.name else '',
-                    'restaurant': (recipe.restaurant_name or '')[:100],
-                    'cuisine_type': (recipe.cuisine_type or '')[:50],
-                    'spice_level': (recipe.spice_level or 'Mild')[:20],
-                    'dietary_tags': ','.join(recipe.dietary_tags or [])[:100],
-                    'calories': recipe.estimated_calories or 0,
-                    'protein': recipe.estimated_protein or 0,
-                    'carbs': recipe.estimated_carbs or 0,
-                    'fat': recipe.estimated_fat or 0,
-                    'price': recipe.price or 0
-                }
-                
-                vectors.append({
+                texts = [self.create_searchable_text(r) for r in batch]
+                embeddings = self.openai_service.generate_embeddings_batch(texts)
+
+                vectors = [{
                     'id': recipe.id,
                     'values': embedding,
-                    'metadata': metadata
-                })
-                
-                if len(vectors) >= batch_size:
-                    self.index.upsert(vectors=vectors)
-                    stored += len(vectors)
-                    logger.info(f"Stored {stored}/{len(recipes)} vectors...")
-                    vectors = []
-                    # Small delay to avoid rate limits
-                    time.sleep(0.5)
-                    
+                    'metadata': self._build_metadata(recipe)
+                } for recipe, embedding in zip(batch, embeddings)]
+
+                self.index.upsert(vectors=vectors)
+                stored += len(vectors)
+                logger.info(f"Stored {stored}/{len(recipes)} vectors...")
             except Exception as e:
-                logger.error(f"Error processing {recipe.name}: {e}")
+                logger.error(f"Error storing batch starting at index {start}: {e}")
                 continue
-        
-        # Store remaining vectors
-        if vectors:
-            self.index.upsert(vectors=vectors)
-            stored += len(vectors)
-        
+
         logger.info(f"Successfully stored {stored} vectors in Pinecone")
         return stored
     

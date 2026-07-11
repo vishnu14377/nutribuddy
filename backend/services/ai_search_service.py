@@ -60,40 +60,27 @@ class EnhancedAISearchService:
             else:
                 logger.warning(f"No results for restaurant '{restaurant_filter}', returning global matches")
         
-        # Step 3: Batch fetch recipes (fix N+1 query)
-        unique_ids = []
+        # Step 3: Dedup, then batch fetch recipes (avoids N+1 queries)
+        top_results = []
         seen_ids = set()
         for result in filtered_results[:top_k]:
             if result['id'] not in seen_ids:
                 seen_ids.add(result['id'])
-                unique_ids.append(result['id'])
-        
-        recipe_docs = self.db_service.get_recipes_by_ids(unique_ids)
+                top_results.append(result)
+
+        recipe_docs = self.db_service.get_recipes_by_ids([r['id'] for r in top_results])
         recipes_dict = {doc['id']: doc for doc in recipe_docs}
-        
+
         # Step 4: Build final results with local explanations (instant)
         final_results = []
-        seen_ids = set()
-        
-        for result in filtered_results[:top_k]:
-            recipe_id = result['id']
-            
-            if recipe_id in seen_ids:
-                continue
-            seen_ids.add(recipe_id)
-            
-            recipe_doc = recipes_dict.get(recipe_id)
-            
+        for result in top_results:
+            recipe_doc = recipes_dict.get(result['id'])
             if recipe_doc:
                 recipe = Recipe(**recipe_doc)
-                
-                # Fast local explanation (no API call)
-                explanation = ExplanationService.generate_explanation(query, recipe)
-                
                 final_results.append({
                     'recipe': recipe,
                     'match_score': result['score'],
-                    'match_explanation': explanation
+                    'match_explanation': ExplanationService.generate_explanation(query, recipe),
                 })
         
         logger.info(f"Returning {len(final_results)} final results")

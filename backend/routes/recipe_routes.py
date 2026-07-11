@@ -1,10 +1,13 @@
 """Nutribuddy API routes - AI-powered nutritional search."""
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException
+from typing import List
 import tempfile
+import time
 import os
 import logging
+
+import requests
 
 from models.recipe import Recipe, SearchQuery, SearchResult
 from services.database_service import DatabaseService
@@ -67,9 +70,6 @@ def create_recipe_router(
     @router.post("/ingest/url")
     async def ingest_from_url(url: str, limit: int = 200):
         """Import menu data from Excel URL."""
-        import requests
-        import time
-        
         if not openai_service:
             raise HTTPException(status_code=500, detail="OpenAI not configured")
         
@@ -108,7 +108,6 @@ def create_recipe_router(
                     items.append(item)
                     
                     if (i + 1) % 5 == 0:
-                        import time
                         time.sleep(1)
                 except Exception as e:
                     logger.error(f"Error: {e}")

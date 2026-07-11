@@ -1,5 +1,7 @@
 """Nutribuddy API - AI-powered nutritional food search."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -27,7 +29,13 @@ if not openai_api_key or not pinecone_api_key:
 
 vector_service = VectorService(pinecone_api_key=pinecone_api_key, openai_api_key=openai_api_key)
 
-app = FastAPI(title="Nutribuddy", description="AI-powered nutritional food search", version="1.0.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    db_service.close()
+
+
+app = FastAPI(title="Nutribuddy", description="AI-powered nutritional food search", version="1.0.0", lifespan=lifespan)
 
 _cors_origins = [o.strip() for o in os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
 
@@ -45,8 +53,3 @@ app.include_router(create_recipe_router(db_service, vector_service, openai_api_k
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "nutribuddy-ai", "db_count": db_service.get_count()}
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    db_service.close()
