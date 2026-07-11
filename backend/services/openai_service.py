@@ -75,11 +75,13 @@ class OpenAIService:
         if context_items:
             lines = []
             for item in context_items[:5]:
+                tags = ', '.join(item.get('dietary_tags') or []) or 'none'
                 lines.append(
                     f"- {item.get('name')} ({item.get('restaurant_name')}, {item.get('source_platform')}): "
                     f"{item.get('estimated_calories')} cal, {item.get('estimated_protein')}g protein, "
                     f"{item.get('estimated_carbs')}g carbs, {item.get('estimated_fat')}g fat"
                     + (f", ${item.get('price')}" if item.get('price') else '')
+                    + f" [verified tags: {tags}]"
                 )
             context = "Relevant dishes currently in the catalog:\n" + "\n".join(lines)
 
@@ -97,6 +99,11 @@ STYLE — concise (2-4 sentences), specific numbers when you have them, no
 medical claims. Nutrition values in the catalog are AI estimates; say
 "estimated" when citing them. When catalog dishes are provided and relevant,
 recommend from them by name.
+
+DIETARY SAFETY (hard rule) — only describe a dish as vegetarian, vegan, keto,
+or gluten-free if that EXACT tag appears in its [verified tags]. If a user has
+a dietary restriction and no provided dish carries the matching tag, say so
+honestly instead of guessing — never assert an unverified dietary status.
 
 Respond in JSON ONLY: {"on_topic": <bool>, "answer": "<your reply>"}"""
 

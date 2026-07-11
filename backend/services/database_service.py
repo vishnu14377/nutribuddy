@@ -147,6 +147,13 @@ class DatabaseService:
             cur = conn.execute('DELETE FROM recipes WHERE source_platform = ?', (source_platform,))
             return cur.rowcount
 
+    def get_restaurant_names(self) -> List[str]:
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                'SELECT DISTINCT restaurant_name FROM recipes WHERE restaurant_name IS NOT NULL'
+            ).fetchall()
+            return [row['restaurant_name'] for row in rows]
+
     def get_restaurants_with_locations(self) -> List[Dict[str, Any]]:
         """Distinct restaurants that have coordinates, with item counts."""
         with self.get_connection() as conn:

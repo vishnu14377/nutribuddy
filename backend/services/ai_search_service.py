@@ -43,16 +43,37 @@ MEAT_WORDS_RE = re.compile(
     r'chicken|beef|steak|lamb|pork|bacon|ham\b|turkey|salmon|tuna|shrimp|prawn|'
     r'fish|crab|gyro|kofta|meatball|pepperoni|sausage|chorizo|brisket|ribs?\b|'
     r'wings?\b|carnitas|pastrami|prosciutto|anchov|nuggets?\b|duck|veal|lobster|'
-    r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b', re.IGNORECASE
+    r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b|gumbo|milanese|schnitzel', re.IGNORECASE
     # 'burger' counts as meat: real veggie burgers carry a vegetarian tag,
     # which is checked BEFORE this regex — an untagged ShackBurger must never
-    # reach vegetarian results, even amber-flagged.
+    # reach vegetarian results, even amber-flagged. Meat-implying dish names
+    # (gumbo, milanese, schnitzel) count too.
 )
 
 # Platforms with a working order handoff. Items from other sources rank in a
 # lower tier and are capped per page — a Top Pick the user cannot buy breaks
 # the product's core promise.
 ORDERABLE_PLATFORMS = {'ubereats', 'doordash'}
+
+
+def _is_orderable(candidate: Dict) -> bool:
+    return (candidate.get('metadata', {}).get('platform', '') or '') in ORDERABLE_PLATFORMS
+
+
+# Dish-type nouns: when the query names a dish, an item that isn't that dish
+# never earns the green badge — a brownie is not a "low calorie pizza".
+DISH_NOUNS = (
+    'pizza', 'burger', 'taco', 'burrito', 'sushi', 'pad thai', 'noodle',
+    'pasta', 'salad', 'sandwich', 'wrap', 'wings', 'soup', 'dessert',
+    'pancake', 'omelette', 'omelet', 'kebab', 'shake', 'smoothie', 'poke',
+    'paneer', 'tofu', 'falafel', 'gyro', 'sub ', 'shawarma', 'curry', 'ramen',
+)
+# Sodas and sweets never "fit" a meal query
+DRINK_DESSERT_RE = re.compile(
+    r'soda|cola|snapple|ramune|juice\b|lemonade|brownie|cookie|cake\b|donut|'
+    r'ice cream|milkshake|candy', re.IGNORECASE
+)
+MEAL_WORDS = ('breakfast', 'lunch', 'dinner', 'meal', 'entree')
 
 PROTEIN_TERMS = (
     'high protein', 'protein rich', 'protein-rich', 'high-protein',
@@ -64,7 +85,10 @@ LOW_CARB_TERMS = (
     'keto', 'no carbs', 'baja en carb', 'bajo en carb', 'sin carb',
 )
 STRICT_KETO_TERMS = ('keto',)
-NO_BREAD_TERMS = ('bunless', 'no bun', 'no bread', 'lettuce wrap', 'without bun', 'without bread')
+NO_BREAD_TERMS = ('no bread', 'without bun', 'without bread')
+# Canonical keto phrasings that don't say "keto" — same strict 15g discipline
+# ('bunless burger' returning a 20g item as a green match is a trust leak).
+KETO_PHRASINGS = ('keto', 'bunless', 'no bun', 'lettuce wrap', 'low carb high fat', 'lchf')
 VEGETARIAN_TERMS = ('vegetarian', 'meatless', 'plant based', 'plant-based', 'no meat', 'veggie', 'vegetariano')
 VEGAN_TERMS = ('vegan', 'vegano')
 # Naming an unambiguously vegetarian dish implies the dietary constraint —
@@ -270,7 +294,7 @@ def parse_intent(query: str) -> QueryIntent:
     if intent.min_protein is None and any(t in work for t in PROTEIN_TERMS):
         intent.min_protein = DEFAULT_MIN_PROTEIN
     if intent.max_carbs is None:
-        if any(t in work for t in STRICT_KETO_TERMS):
+        if any(t in work for t in KETO_PHRASINGS):
             intent.max_carbs = KETO_MAX_CARBS
         elif any(t in work for t in NO_BREAD_TERMS):
             intent.max_carbs = NO_BREAD_MAX_CARBS
@@ -346,17 +370,17 @@ class EnhancedAISearchService:
         if not candidates:
             return []
 
-        # Restaurant narrowing (fuzzy, post-filter)
+        # Restaurant narrowing (fuzzy, post-filter). A filter that matches
+        # nothing returns an honest empty set — never other restaurants' food.
         if restaurant_filter:
             restaurant_lower = restaurant_filter.lower()
-            matched = [
+            candidates = [
                 c for c in candidates
                 if restaurant_lower in (c.get('metadata', {}).get('restaurant', '') or '').lower()
             ]
-            if matched:
-                candidates = matched
-            else:
-                logger.warning(f"No results for restaurant '{restaurant_filter}', keeping global matches")
+            if not candidates:
+                logger.info(f"No candidates at restaurant '{restaurant_filter}' — honest empty result")
+                return []
 
         # Honest empty state: drop noise-level matches entirely
         candidates = [c for c in candidates if c['score'] >= RELEVANCE_FLOOR]
@@ -389,12 +413,16 @@ class EnhancedAISearchService:
                 ranked = [(c, True) for c in self._rank_by_value(qualified, intent)]
             else:
                 ranked = [(c, True) for c in self._rank_and_cap(qualified)]
-            # Thin result sets get labeled near-misses instead of a cliff —
-            # except value queries, where an unpriced near-miss is pure noise.
-            if len(qualified) < 3 and intent.has_any_constraint() and not intent.value_seek:
+            # Thin ORDERABLE result sets get labeled near-misses instead of a
+            # cliff — the user must always leave with an actionable path, even
+            # when the only strict fits are unorderable partner items. Value
+            # queries skip this (an unpriced near-miss is pure noise).
+            if (len([c for c in qualified if _is_orderable(c)]) < 3
+                    and intent.has_any_constraint() and not intent.value_seek):
                 qualified_ids = {c['id'] for c in qualified}
-                extras = self._closest_fallback(
-                    [c for c in pool if c['id'] not in qualified_ids], intent)
+                remainder = [c for c in pool if c['id'] not in qualified_ids]
+                orderable_remainder = [c for c in remainder if _is_orderable(c)]
+                extras = self._closest_fallback(orderable_remainder or remainder, intent)
                 ranked += [(c, False) for c in extras[:3]]
         elif intent.has_any_constraint():
             ranked = [(c, False) for c in self._closest_fallback(pool, intent)]
@@ -448,12 +476,27 @@ class EnhancedAISearchService:
             if item_meets and result['score'] < SOFT_RELEVANCE_FLOOR:
                 item_meets = False
 
+            # Dish-type gate: "low calorie pizza" must never green-badge a
+            # brownie; meal queries must never green-badge a soda. Cuisine is
+            # deliberately EXCLUDED from the haystack — a brownie sold by a
+            # pizzeria is still not pizza.
+            item_text = f"{recipe.name} {recipe.description or ''}".lower()
+            query_lower_full = query.lower()
+            named_dishes = [n for n in DISH_NOUNS if n in query_lower_full]
+            if item_meets and named_dishes and not any(n in item_text for n in named_dishes):
+                item_meets = False
+            if item_meets and any(w in query_lower_full for w in MEAL_WORDS) \
+                    and DRINK_DESSERT_RE.search(item_text):
+                item_meets = False
+
             explanation = ExplanationService.generate_explanation(
                 query, recipe, intent=intent, meets_constraints=item_meets
             )
             if unverified_diet:
                 diet_word = 'vegan' if intent.vegan else 'vegetarian'
                 explanation = f"{diet_word.capitalize()} status unverified (no meat listed) • {explanation}"
+            if recipe.source_platform not in ORDERABLE_PLATFORMS:
+                explanation = f"{explanation} • partner preview — ordering coming soon"
 
             final_results.append({
                 'recipe': recipe,
@@ -637,7 +680,7 @@ class ExplanationService:
             if protein > carbs:
                 parts.append(f"Strong protein-to-carb ratio ({ratio:.1f}:1)")
             parts.append(f"{protein:g}g protein with {carbs:g}g carbs")
-            if carbs <= KETO_MAX_CARBS:
+            if 'keto-friendly' in (t.lower() for t in (recipe.dietary_tags or [])):
                 parts.append("keto-friendly")
             return " • ".join(parts)
 
@@ -650,10 +693,14 @@ class ExplanationService:
             else:
                 parts.append(f"{protein:g}g protein")
 
-        # Carb focused — enforcement must be VISIBLE, and "only" is earned
+        # Carb focused — enforcement must be VISIBLE, "only" is earned, and
+        # "keto-friendly" is a TAG claim, never inferred from carbs alone
         if intent is not None and intent.max_carbs is not None:
-            if carbs <= KETO_MAX_CARBS:
-                parts.append(f"only {carbs:g}g carbs • keto-friendly")
+            has_keto_tag = 'keto-friendly' in (t.lower() for t in (recipe.dietary_tags or []))
+            if carbs <= KETO_MAX_CARBS and has_keto_tag:
+                parts.append(f"only {carbs:g}g total carbs • keto-friendly")
+            elif carbs <= KETO_MAX_CARBS:
+                parts.append(f"only {carbs:g}g total carbs")
             elif carbs <= intent.max_carbs:
                 parts.append(f"{carbs:g}g carbs — fits your low-carb target")
             else:

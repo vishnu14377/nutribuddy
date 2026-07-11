@@ -82,10 +82,19 @@ export default function HomePage() {
             : "No matches found. Try different criteria!",
         );
       }
-    } catch {
+    } catch (err) {
       refundSearch();
       setRemaining(getRemaining());
-      toast.error("Search failed. Is the AI backend running?");
+      if (err.response?.status === 422) {
+        const detail = err.response.data?.detail;
+        toast.error(
+          typeof detail === "string"
+            ? detail
+            : "That search is too long — keep it under 1000 characters.",
+        );
+      } else {
+        toast.error("Search failed. Is the AI backend running?");
+      }
     } finally {
       setIsSearching(false);
     }
@@ -130,7 +139,7 @@ export default function HomePage() {
     setIsLocating(true);
     try {
       const { data } = await axios.get(`${NUTRIBUDDY_API}/restaurants/nearby`, {
-        params: { zipcode: zip },
+        params: { zipcode: zip, ...(activePlatform ? { source_platform: activePlatform } : {}) },
       });
       setNearby(data.restaurants);
       if (data.restaurants.length === 0) {
@@ -229,6 +238,7 @@ export default function HomePage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              maxLength={1000}
               placeholder={
                 mode === "ask"
                   ? 'Ask about food — "what should I eat after a workout?"'

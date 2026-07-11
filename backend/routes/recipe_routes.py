@@ -289,6 +289,17 @@ def create_recipe_router(
                     detail=f"Unknown source_platform '{query.source_platform}'. "
                            f"Available: {sorted(known)}"
                 )
+        if query.restaurant_name:
+            names = db_service.get_restaurant_names()
+            wanted = query.restaurant_name.lower()
+            if not any(wanted in n.lower() for n in names):
+                import difflib
+                close = difflib.get_close_matches(query.restaurant_name, names, n=3, cutoff=0.5)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown restaurant '{query.restaurant_name}'."
+                           + (f" Did you mean: {', '.join(close)}?" if close else "")
+                )
         if enhanced_search:
             try:
                 results = enhanced_search.search(
@@ -330,7 +341,8 @@ def create_recipe_router(
         return sorted(results, key=lambda x: x.match_score, reverse=True)[:10]
 
     @router.get("/restaurants/nearby")
-    async def restaurants_nearby(zipcode: str, radius_km: float = 25, limit: int = 12):
+    async def restaurants_nearby(zipcode: str, radius_km: float = 25, limit: int = 12,
+                                 source_platform: Optional[str] = None):
         """Restaurants near a US zipcode, from the indexed catalog.
 
         Query-time proximity uses stored coordinates — live scraping is an
@@ -343,8 +355,18 @@ def create_recipe_router(
         except GeocodeUnavailable as e:
             raise HTTPException(status_code=502, detail=str(e))
 
+        source_platform = (source_platform or '').strip().lower() or None
+        if source_platform:
+            known = db_service.get_platform_counts()
+            if source_platform not in known:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown source_platform '{source_platform}'. Available: {sorted(known)}")
+
         nearby = []
         for r in db_service.get_restaurants_with_locations():
+            if source_platform and r['source_platform'] != source_platform:
+                continue
             distance = haversine_km(lat, lon, r['latitude'], r['longitude'])
             if distance <= radius_km:
                 nearby.append({
@@ -365,19 +387,26 @@ def create_recipe_router(
         if not openai_service:
             raise HTTPException(status_code=503, detail="Assistant not configured")
 
-        # Ground the answer in the most relevant catalog dishes
+        # Ground the answer in the most relevant catalog dishes. Items that
+        # fail the question's constraints (meets_constraints=False) are NEVER
+        # offered to the model as recommendation candidates — the assistant
+        # once told a vegetarian an untagged poke bowl was vegetarian.
         context_items = []
         supporting = []
         if enhanced_search:
             try:
                 results = enhanced_search.search(query.question, top_k=5)
-                context_items = [r['recipe'].model_dump() for r in results]
+                qualified = [r for r in results if r.get('meets_constraints', True)]
+                context_items = [{
+                    **r['recipe'].model_dump(),
+                    'dietary_tags': r['recipe'].dietary_tags or [],
+                } for r in qualified]
                 supporting = [SearchResult(
                     recipe=r['recipe'],
                     match_score=r['match_score'],
                     match_explanation=r['match_explanation'],
                     meets_constraints=r.get('meets_constraints', True),
-                ) for r in results[:3]]
+                ) for r in (qualified or results)[:3]]
             except Exception as e:
                 logger.warning(f"Ask grounding search failed (continuing without): {e}")
 

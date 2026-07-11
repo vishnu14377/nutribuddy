@@ -73,8 +73,11 @@ class TestMacroAndPriceParsing:
         # as an ignored constraint
         assert parse_intent('low carb dinner').max_carbs == 20
 
-    def test_bunless_implies_carb_constraint(self):
-        assert parse_intent('bunless burger').max_carbs == 20
+    def test_bunless_is_strict_keto(self):
+        # Round-4: 'bunless burger' is canonical keto phrasing — same 15g bar
+        assert parse_intent('bunless burger').max_carbs == 15
+        assert parse_intent('low carb high fat meal').max_carbs == 15
+        assert parse_intent('meal without bread').max_carbs == 20
 
     def test_high_protein_default_threshold(self):
         assert parse_intent('high protein meal').min_protein == 30
@@ -83,7 +86,7 @@ class TestMacroAndPriceParsing:
         # Round-2 fix: keto's other half was silently dropped
         intent = parse_intent('low carb high fat meal')
         assert intent.min_fat == 20
-        assert intent.max_carbs == 20
+        assert intent.max_carbs == 15  # canonical keto phrasing = strict cap
 
     def test_value_seeking_parsed(self):
         assert parse_intent('cheap high protein lunch').value_seek is True
@@ -412,6 +415,56 @@ class TestSearchBehavior:
         assert names[0] == 'Orderable Keto'
         assert sum(1 for n in names if n.startswith('Partner')) <= 2
 
+    def test_dish_type_gate_denies_green_badge_to_wrong_dish(self):
+        # Round-4: a brownie is not a "low calorie pizza"
+        candidates = [
+            make_candidate('Chocolate Brownie', calories=400, score=0.45,
+                           description='fudgy chocolate brownie'),
+        ]
+        results = run_search(candidates, 'low calorie pizza')
+        assert results[0]['meets_constraints'] is False
+
+    def test_dish_type_gate_passes_matching_dish(self):
+        candidates = [
+            make_candidate('Keto Crust Pizza', calories=450, carbs=12, score=0.5,
+                           description='cauliflower crust pizza', tags='keto-friendly'),
+        ]
+        results = run_search(candidates, 'low calorie pizza')
+        assert results[0]['meets_constraints'] is True
+
+    def test_drinks_never_fit_meal_queries(self):
+        candidates = [
+            make_candidate('Ramune Soda', calories=90, score=0.4, description='japanese soda'),
+        ]
+        results = run_search(candidates, 'light dinner under 300 calories')
+        assert results[0]['meets_constraints'] is False
+
+    def test_unknown_restaurant_returns_empty_not_global(self):
+        candidates = [make_candidate('Burger', score=0.6)]
+        svc = EnhancedAISearchService(FakeVectors(candidates), FakeDB(candidates))
+        assert svc.search('burger', restaurant_filter='Totally Fake Diner XYZ') == []
+
+    def test_keto_friendly_wording_requires_the_tag(self):
+        # Round-4: 'keto-friendly' is a tag claim, not inferred from carbs
+        candidates = [
+            make_candidate('Steak Bowl', protein=39, carbs=15, calories=380,
+                           score=0.5, tags='high-protein,low-carb'),
+        ]
+        results = run_search(candidates, 'keto dinner')
+        assert 'keto-friendly' not in results[0]['match_explanation']
+        assert 'total carbs' in results[0]['match_explanation']
+
+    def test_partner_items_labeled_in_explanation(self):
+        candidates = [
+            make_candidate('Keto Steak & Eggs', protein=52, carbs=6, calories=610,
+                           score=0.6, platform='biterush', tags='keto-friendly'),
+            make_candidate('Orderable Keto Bowl', protein=42, carbs=8, calories=500,
+                           score=0.5, platform='ubereats'),
+        ]
+        results = run_search(candidates, 'keto dinner')
+        partner = next(r for r in results if r['recipe'].source_platform == 'biterush')
+        assert 'partner preview' in partner['match_explanation']
+
     def test_value_query_ranks_by_protein_per_dollar(self):
         candidates = [
             make_candidate('Pricey Protein', protein=50, price=20.0, score=0.6),   # 2.5 g/$
@@ -433,10 +486,17 @@ class TestExplanationService:
         assert '280' in text and '9' in text and '18' in text
 
     def test_protein_carb_query_mentions_ratio_and_keto(self):
-        recipe = Recipe(name='Steak', estimated_protein=50, estimated_carbs=5, estimated_calories=610)
+        # 'keto-friendly' in the explanation is earned by the TAG, not carbs
+        recipe = Recipe(name='Steak', estimated_protein=50, estimated_carbs=5,
+                        estimated_calories=610, dietary_tags=['keto-friendly'])
         text = ExplanationService.generate_explanation('high protein low carb', recipe)
         assert 'ratio' in text.lower()
         assert 'keto' in text.lower()
+
+    def test_protein_carb_query_no_keto_claim_without_tag(self):
+        recipe = Recipe(name='Steak', estimated_protein=50, estimated_carbs=5, estimated_calories=610)
+        text = ExplanationService.generate_explanation('high protein low carb', recipe)
+        assert 'keto' not in text.lower()
 
     def test_only_phrasing_is_earned_not_automatic(self):
         # Round-1 fix: 28g carbs must never read as "only 28g carbs"
