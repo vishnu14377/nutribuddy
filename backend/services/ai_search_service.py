@@ -23,18 +23,21 @@ class EnhancedAISearchService:
         self.db_service = db_service
         logger.info("Fast AI Search Service initialized")
     
-    def search(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
-        """Perform fast search with nutritional filtering (NO slow GPT calls).
+    def search(
+        self,
+        query: str,
+        top_k: int = 10,
+        restaurant_filter: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Perform fast search with nutritional filtering (NO slow GPT calls)."""
+        log_suffix = f" [restaurant={restaurant_filter}]" if restaurant_filter else ""
+        logger.info(f"Fast search for: '{query}'{log_suffix}")
         
-        Uses:
-        - OpenAI embeddings for semantic search (already computed at ingestion)
-        - Local nutritional filtering (instant)
-        - Local explanation generation (instant)
-        """
-        logger.info(f"Fast search for: '{query}'")
-        
+        # Boost semantic relevance by including restaurant name in the query
+        search_query = f"{query} at {restaurant_filter}" if restaurant_filter else query
+
         # Step 1: Vector search (uses pre-computed embeddings, fast)
-        vector_results = self.vector_service.search(query, top_k=50)
+        vector_results = self.vector_service.search(search_query, top_k=50)
         logger.info(f"Vector search returned {len(vector_results)} candidates")
         
         if not vector_results:
@@ -42,7 +45,20 @@ class EnhancedAISearchService:
         
         # Step 2: Apply nutritional filters locally (instant, no API calls)
         filtered_results = self._apply_nutritional_filters(query, vector_results)
-        logger.info(f"After filtering: {len(filtered_results)} results")
+        logger.info(f"After nutritional filtering: {len(filtered_results)} results")
+
+        # Step 2b: Narrow to specific restaurant if requested
+        if restaurant_filter:
+            restaurant_lower = restaurant_filter.lower()
+            restaurant_matched = [
+                r for r in filtered_results
+                if restaurant_lower in (r.get("metadata", {}).get("restaurant", "") or "").lower()
+            ]
+            if restaurant_matched:
+                filtered_results = restaurant_matched
+                logger.info(f"Restaurant filter '{restaurant_filter}': {len(filtered_results)} results")
+            else:
+                logger.warning(f"No results for restaurant '{restaurant_filter}', returning global matches")
         
         # Step 3: Batch fetch recipes (fix N+1 query)
         unique_ids = []

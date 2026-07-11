@@ -36,16 +36,17 @@ class Recipe(BaseModel):
 
 class SearchQuery(BaseModel):
     """Search query model.
-    
+
     Supports natural language queries like:
     - "high protein meal under 500 calories"
     - "spicy vegetarian dinner"
     - "pizza near me"
     - "30g protein low carb"
     """
-    
+
     query: str
     filters: Optional[dict] = {}
+    restaurant_name: Optional[str] = None  # narrow results to a specific restaurant
 
 
 class SearchResult(BaseModel):

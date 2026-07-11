@@ -48,6 +48,22 @@ def create_recipe_router(
             "engine": "OpenAI embeddings + nutritional filtering"
         }
     
+    @router.post("/ingest/items")
+    async def ingest_items(items: List[Recipe], replace: bool = True):
+        """Bulk-ingest pre-structured items whose nutrition is already known.
+        No GPT estimation — nutrition values are trusted as supplied.
+        Used by external apps (e.g. BiteRush) to push their own catalog.
+        """
+        if not items:
+            raise HTTPException(status_code=400, detail="No items provided")
+        if replace:
+            vector_service.clear_index()
+            db_service.clear_all()
+        for recipe in items:
+            db_service.upsert_recipe(recipe.model_dump())
+        stored = vector_service.store_recipes_batch(items, batch_size=50)
+        return {"message": f"Ingested {len(items)} items", "count": len(items), "vectors_stored": stored}
+
     @router.post("/ingest/url")
     async def ingest_from_url(url: str, limit: int = 200):
         """Import menu data from Excel URL."""
@@ -112,15 +128,19 @@ def create_recipe_router(
     
     @router.post("/search", response_model=List[SearchResult])
     async def search(query: SearchQuery):
-        """AI-powered nutritional search."""
+        """AI-powered nutritional search. Optionally filter by restaurant_name."""
         if enhanced_search:
-            results = enhanced_search.search(query.query, top_k=10)
+            results = enhanced_search.search(
+                query.query,
+                top_k=10,
+                restaurant_filter=query.restaurant_name,
+            )
             return [SearchResult(
                 recipe=r['recipe'],
                 match_score=r['match_score'],
                 match_explanation=r['match_explanation']
             ) for r in results]
-        
+
         search_results = vector_service.search(query.query, top_k=15)
         
         # Batch fetch all recipes (fix N+1 query)

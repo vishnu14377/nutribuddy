@@ -29,15 +29,23 @@ vector_service = VectorService(pinecone_api_key=pinecone_api_key, openai_api_key
 
 app = FastAPI(title="Nutribuddy", description="AI-powered nutritional food search", version="1.0.0")
 
+_cors_origins = [o.strip() for o in os.environ.get('CORS_ORIGINS', 'http://localhost:3000').split(',') if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(create_recipe_router(db_service, vector_service, openai_api_key=openai_api_key))
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "nutribuddy-ai", "db_count": db_service.get_count()}
+
 
 @app.on_event("shutdown")
 async def shutdown():
