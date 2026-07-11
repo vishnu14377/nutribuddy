@@ -21,13 +21,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 249.0,
+    "price": 12.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7707",
@@ -50,13 +53,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 299.0,
+    "price": 14.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7708",
@@ -81,13 +87,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 349.0,
+    "price": 17.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7709",
@@ -112,13 +121,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 179.0,
+    "price": 8.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c770a",
@@ -141,13 +153,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 379.0,
+    "price": 18.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c770b",
@@ -172,13 +187,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 229.0,
+    "price": 11.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c770c",
@@ -202,13 +220,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 219.0,
+    "price": 10.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c770d",
@@ -231,13 +252,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 269.0,
+    "price": 13.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c770e",
@@ -261,13 +285,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 259.0,
+    "price": 12.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c770f",
@@ -291,13 +318,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 189.0,
+    "price": 9.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7710",
@@ -320,13 +350,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 159.0,
+    "price": 7.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7711",
@@ -351,13 +384,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 209.0,
+    "price": 10.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7712",
@@ -380,13 +416,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 289.0,
+    "price": 14.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7713",
@@ -410,13 +449,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 199.0,
+    "price": 9.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7714",
@@ -442,13 +484,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 169.0,
+    "price": 8.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7715",
@@ -472,13 +517,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 199.0,
+    "price": 9.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7716",
@@ -503,13 +551,16 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 319.0,
+    "price": 15.95,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   },
   {
     "id": "6a1ed1dec5b755ad106c7717",
@@ -534,12 +585,15 @@
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
-    "price": 149.0,
+    "price": 7.45,
     "uber_uuid": null,
     "tags": null,
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
-    "currency": null,
-    "order_url": null
+    "currency": "USD",
+    "order_url": null,
+    "latitude": 38.9096,
+    "longitude": -77.0434,
+    "postal_code": "20036"
   }
 ]

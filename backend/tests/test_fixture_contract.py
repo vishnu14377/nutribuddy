@@ -10,9 +10,9 @@ from connectors.fixture_connector import FixtureConnector, FIXTURES_DIR
 
 FIXTURE_PLATFORMS = sorted(p.stem for p in FIXTURES_DIR.glob('*.json'))
 
-# Platforms whose fixtures must carry full commercial data. 'biterush' is the
-# legacy partner seed: currency intentionally unknown until the partner confirms.
-STRICT_PLATFORMS = {'ubereats', 'doordash'}
+# Every fixture now carries USD prices (team directive 2026-07-11: USD for
+# now; biterush demo prices converted from ambiguous units to sample USD).
+STRICT_PLATFORMS = {'ubereats', 'doordash', 'biterush'}
 
 
 @pytest.mark.parametrize('platform', FIXTURE_PLATFORMS)

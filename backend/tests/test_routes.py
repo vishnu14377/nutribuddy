@@ -220,6 +220,89 @@ class TestIngestUrlGuard:
         assert r.status_code == 400
 
 
+class TestNearbyRestaurants:
+    @pytest.fixture
+    def geo_client(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('ADMIN_API_TOKEN', raising=False)
+        import routes.recipe_routes as rr
+        monkeypatch.setattr(rr, 'geocode_zip', lambda z: (38.9072, -77.0369))  # DC
+        db = DatabaseService(str(tmp_path / 't.db'))
+        app = FastAPI()
+        app.include_router(create_recipe_router(db, FakeVectorService()))
+        c = TestClient(app)
+        c.db = db
+        return c
+
+    def test_nearby_sorted_by_distance_and_filtered_by_radius(self, geo_client):
+        geo_client.post('/api/ingest/items', json=[
+            item('A', 'ubereats', restaurant_name='Close Kitchen',
+                 latitude=38.91, longitude=-77.04, postal_code='20009'),
+            item('B', 'doordash', restaurant_name='Far Diner',
+                 latitude=40.71, longitude=-75.21, postal_code='18042'),  # ~330 km away
+            item('C', 'ubereats', restaurant_name='Close Kitchen',
+                 latitude=38.91, longitude=-77.04, postal_code='20009'),
+        ])
+        r = geo_client.get('/api/restaurants/nearby?zipcode=20009')
+        assert r.status_code == 200
+        data = r.json()
+        names = [x['restaurant_name'] for x in data['restaurants']]
+        assert names == ['Close Kitchen']
+        assert data['restaurants'][0]['item_count'] == 2
+
+    def test_invalid_zipcode_422(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('ADMIN_API_TOKEN', raising=False)
+        db = DatabaseService(str(tmp_path / 't.db'))
+        app = FastAPI()
+        app.include_router(create_recipe_router(db, FakeVectorService()))
+        c = TestClient(app)
+        assert c.get('/api/restaurants/nearby?zipcode=abc').status_code == 422
+
+
+class FakeOpenAIService:
+    """Food-scope behavior stub: refuses questions containing 'president'."""
+
+    def __init__(self, api_key=None):
+        pass
+
+    def answer_food_question(self, question, context_items=None):
+        if 'president' in question.lower():
+            return {'on_topic': False, 'answer': 'Sorry — I only help with food questions.'}
+        return {'on_topic': True, 'answer': 'Grilled chicken is a great high-protein pick.'}
+
+
+class TestAskEndpoint:
+    @pytest.fixture
+    def ask_client(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('ADMIN_API_TOKEN', raising=False)
+        import routes.recipe_routes as rr
+        monkeypatch.setattr(rr, 'OpenAIService', FakeOpenAIService)
+        db = DatabaseService(str(tmp_path / 't.db'))
+        app = FastAPI()
+        app.include_router(create_recipe_router(db, FakeVectorService(), openai_api_key='sk-test'))
+        return TestClient(app)
+
+    def test_food_question_answered_on_topic(self, ask_client):
+        r = ask_client.post('/api/ask', json={'question': 'what is a good high protein dinner?'})
+        assert r.status_code == 200
+        data = r.json()
+        assert data['on_topic'] is True
+        assert 'chicken' in data['answer'].lower()
+
+    def test_general_question_refused(self, ask_client):
+        r = ask_client.post('/api/ask', json={'question': 'who is the president of the united states?'})
+        assert r.status_code == 200
+        data = r.json()
+        assert data['on_topic'] is False
+        assert data['results'] == []
+
+    def test_oversized_question_422(self, ask_client):
+        assert ask_client.post('/api/ask', json={'question': 'x' * 2000}).status_code == 422
+
+    def test_unconfigured_assistant_503(self, client):
+        # `client` fixture has no openai_api_key
+        assert client.post('/api/ask', json={'question': 'keto tips?'}).status_code == 503
+
+
 class TestRecipeEndpoints:
     def test_get_recipe_by_id_and_404(self, client):
         client.post('/api/ingest/items', json=[item('A', 'ubereats', id='rid1')])

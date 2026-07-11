@@ -10,7 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Every persisted Recipe field, in canonical column order.
 COLUMNS = [
@@ -19,6 +19,7 @@ COLUMNS = [
     'estimated_calories', 'estimated_protein', 'estimated_carbs', 'estimated_fat',
     'image_url', 'restaurant_name', 'delivery_time', 'rating',
     'price', 'currency', 'source_platform', 'order_url', 'uber_uuid', 'tags',
+    'latitude', 'longitude', 'postal_code',
 ]
 
 JSON_COLUMNS = ('ingredients', 'dietary_tags')
@@ -70,7 +71,10 @@ class DatabaseService:
                     source_platform TEXT DEFAULT 'biterush',
                     order_url TEXT,
                     uber_uuid TEXT,
-                    tags TEXT
+                    tags TEXT,
+                    latitude REAL,
+                    longitude REAL,
+                    postal_code TEXT
                 )
             ''')
             self._migrate(conn)
@@ -87,10 +91,12 @@ class DatabaseService:
 
         existing = {row[1] for row in conn.execute('PRAGMA table_info(recipes)').fetchall()}
         defaults = {'source_platform': "DEFAULT 'biterush'"}
+        real_cols = ('estimated_protein', 'estimated_carbs', 'estimated_fat',
+                     'rating', 'price', 'latitude', 'longitude')
         for col in COLUMNS:
             if col not in existing:
                 col_type = 'INTEGER' if col == 'estimated_calories' else \
-                           'REAL' if col in ('estimated_protein', 'estimated_carbs', 'estimated_fat', 'rating', 'price') else 'TEXT'
+                           'REAL' if col in real_cols else 'TEXT'
                 conn.execute(f'ALTER TABLE recipes ADD COLUMN {col} {col_type} {defaults.get(col, "")}')
                 logger.info(f"Migration: added column {col}")
 
@@ -140,6 +146,21 @@ class DatabaseService:
         with self.get_connection() as conn:
             cur = conn.execute('DELETE FROM recipes WHERE source_platform = ?', (source_platform,))
             return cur.rowcount
+
+    def get_restaurants_with_locations(self) -> List[Dict[str, Any]]:
+        """Distinct restaurants that have coordinates, with item counts."""
+        with self.get_connection() as conn:
+            rows = conn.execute('''
+                SELECT restaurant_name, latitude, longitude, postal_code,
+                       COALESCE(source_platform, 'biterush') AS source_platform,
+                       MAX(cuisine_type) AS cuisine_type,
+                       COUNT(*) AS item_count
+                FROM recipes
+                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                      AND restaurant_name IS NOT NULL
+                GROUP BY restaurant_name, latitude, longitude
+            ''').fetchall()
+            return [dict(row) for row in rows]
 
     def get_platform_counts(self) -> Dict[str, int]:
         with self.get_connection() as conn:

@@ -12,12 +12,23 @@ import logging
 
 import requests
 
+from pydantic import BaseModel, Field
+
 from models.recipe import Recipe, SearchQuery, SearchResult
 from services.database_service import DatabaseService
 from services.vector_service import VectorService
 from services.ai_search_service import EnhancedAISearchService, ExplanationService
+from services.location_service import (
+    GeocodeUnavailable, InvalidZipcode, geocode_zip, haversine_km,
+)
 from services.openai_service import OpenAIService
 from services.data_ingestion_service import DataIngestionService
+
+
+class AskQuery(BaseModel):
+    """A question for the food-scoped assistant."""
+
+    question: str = Field(min_length=1, max_length=1000)
 
 logger = logging.getLogger(__name__)
 
@@ -317,6 +328,65 @@ def create_recipe_router(
                 ))
 
         return sorted(results, key=lambda x: x.match_score, reverse=True)[:10]
+
+    @router.get("/restaurants/nearby")
+    async def restaurants_nearby(zipcode: str, radius_km: float = 25, limit: int = 12):
+        """Restaurants near a US zipcode, from the indexed catalog.
+
+        Query-time proximity uses stored coordinates — live scraping is an
+        ingest-time operation (see scripts/ingest_zipcode.py), never done here.
+        """
+        try:
+            lat, lon = geocode_zip(zipcode)
+        except InvalidZipcode as e:
+            raise HTTPException(status_code=422, detail=str(e))
+        except GeocodeUnavailable as e:
+            raise HTTPException(status_code=502, detail=str(e))
+
+        nearby = []
+        for r in db_service.get_restaurants_with_locations():
+            distance = haversine_km(lat, lon, r['latitude'], r['longitude'])
+            if distance <= radius_km:
+                nearby.append({
+                    'restaurant_name': r['restaurant_name'],
+                    'distance_km': round(distance, 1),
+                    'item_count': r['item_count'],
+                    'source_platform': r['source_platform'],
+                    'cuisine_type': r['cuisine_type'],
+                    'postal_code': r['postal_code'],
+                })
+        nearby.sort(key=lambda r: r['distance_km'])
+        return {'zipcode': zipcode, 'radius_km': radius_km, 'restaurants': nearby[:limit]}
+
+    @router.post("/ask")
+    async def ask(query: AskQuery):
+        """Food-scoped assistant: answers food/nutrition questions grounded in
+        the catalog; politely refuses anything off-topic."""
+        if not openai_service:
+            raise HTTPException(status_code=503, detail="Assistant not configured")
+
+        # Ground the answer in the most relevant catalog dishes
+        context_items = []
+        supporting = []
+        if enhanced_search:
+            try:
+                results = enhanced_search.search(query.question, top_k=5)
+                context_items = [r['recipe'].model_dump() for r in results]
+                supporting = [SearchResult(
+                    recipe=r['recipe'],
+                    match_score=r['match_score'],
+                    match_explanation=r['match_explanation'],
+                    meets_constraints=r.get('meets_constraints', True),
+                ) for r in results[:3]]
+            except Exception as e:
+                logger.warning(f"Ask grounding search failed (continuing without): {e}")
+
+        reply = openai_service.answer_food_question(query.question, context_items)
+        return {
+            'answer': reply['answer'],
+            'on_topic': reply['on_topic'],
+            'results': supporting if reply['on_topic'] else [],
+        }
 
     @router.get("/recipes", response_model=List[Recipe])
     async def get_recipes(limit: int = 100):

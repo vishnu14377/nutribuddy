@@ -67,6 +67,7 @@ class TestMigration:
             delivery_time='30m', rating=4.2, price=12.99, currency='USD',
             source_platform='ubereats', order_url='https://example.com/x',
             uber_uuid='u-1', tags='t',
+            latitude=38.9072, longitude=-77.0369, postal_code='20009',
         )
         db.upsert_recipe(recipe.model_dump())
         row = db.get_recipe_by_id('full1')

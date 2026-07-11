@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
-import { Sparkles, Search, Flame, Salad, Zap, TrendingUp, Shield } from "lucide-react";
+import { MapPin, MessageCircle, Sparkles, Search, Flame, Salad, Zap, TrendingUp, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Toaster, toast } from "sonner";
@@ -30,6 +30,12 @@ export default function HomePage() {
   const [dataReady, setDataReady]         = useState(false);
   const [showUpgrade, setShowUpgrade]     = useState(false);
   const [remaining, setRemaining]         = useState(() => getRemaining());
+  const [mode, setMode]                   = useState("search"); // search | ask
+  const [askReply, setAskReply]           = useState(null);      // {answer, on_topic, results}
+  const [zipcode, setZipcode]             = useState("");
+  const [nearby, setNearby]               = useState(null);      // null = not asked yet
+  const [isLocating, setIsLocating]       = useState(false);
+  const [activeRestaurant, setActiveRestaurant] = useState(null);
 
   useEffect(() => {
     axios
@@ -47,7 +53,7 @@ export default function HomePage() {
 
   // ── Search ──────────────────────────────────────────────────────────────────
 
-  const runSearch = async (query, platform = activePlatform, { consumeQuota = true } = {}) => {
+  const runSearch = async (query, platform = activePlatform, { consumeQuota = true, restaurant = null } = {}) => {
     if (isSearching) return; // Enter key must not double-fire (and double-burn quota)
     const q = (query ?? searchQuery).trim();
     if (!q) { toast.error("Enter what you're looking for!"); return; }
@@ -59,13 +65,16 @@ export default function HomePage() {
     }
 
     setIsSearching(true);
+    setAskReply(null);
     try {
       const payload = { query: q, filters: {} };
       if (platform) payload.source_platform = platform;
+      if (restaurant) payload.restaurant_name = restaurant;
 
       const { data } = await axios.post(`${NUTRIBUDDY_API}/search`, payload);
       setSearchResults(data);
       setResultsPlatform(platform ?? null);
+      setActiveRestaurant(restaurant ?? null);
       if (data.length === 0) {
         toast.info(
           platform
@@ -82,9 +91,67 @@ export default function HomePage() {
     }
   };
 
+  const runAsk = async (question) => {
+    if (isSearching) return;
+    const q = (question ?? searchQuery).trim();
+    if (!q) { toast.error("Ask me anything about food!"); return; }
+
+    const { allowed, remaining: left } = consumeSearch();
+    if (!allowed) { setRemaining(0); setShowUpgrade(true); return; }
+    setRemaining(left);
+
+    setIsSearching(true);
+    setSearchResults([]);
+    setActiveRestaurant(null);
+    try {
+      const { data } = await axios.post(`${NUTRIBUDDY_API}/ask`, { question: q });
+      setAskReply(data);
+      setSearchResults(data.on_topic ? (data.results ?? []) : []);
+    } catch {
+      refundSearch();
+      setRemaining(getRemaining());
+      toast.error("The assistant is unavailable right now.");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSubmit = () => (mode === "ask" ? runAsk() : runSearch());
+
   const handleQuickSearch = (label) => {
+    setMode("search");
     setSearchQuery(label);
     runSearch(label);
+  };
+
+  const handleFindNearby = async () => {
+    const zip = zipcode.trim();
+    if (!/^\d{5}$/.test(zip)) { toast.error("Enter a 5-digit US zipcode"); return; }
+    setIsLocating(true);
+    try {
+      const { data } = await axios.get(`${NUTRIBUDDY_API}/restaurants/nearby`, {
+        params: { zipcode: zip },
+      });
+      setNearby(data.restaurants);
+      if (data.restaurants.length === 0) {
+        toast.info(`No indexed restaurants near ${zip} yet — try 20009 (DC) or 18042 (Easton, PA).`);
+      } else {
+        toast.success(`${data.restaurants.length} restaurants near ${zip}`);
+      }
+    } catch (err) {
+      setNearby(null);
+      toast.error(err.response?.data?.detail ?? "Couldn't look up that zipcode.");
+    } finally {
+      setIsLocating(false);
+    }
+  };
+
+  const handleRestaurantClick = (restaurantName) => {
+    setMode("search");
+    const q = searchQuery.trim() || "best rated meal";
+    setSearchQuery(q);
+    runSearch(q, activePlatform, { restaurant: restaurantName });
+    setTimeout(() => document.getElementById("ai-results")?.scrollIntoView({ behavior: "smooth" }), 300);
   };
 
   const handlePlatformChip = (platform) => {
@@ -137,32 +204,79 @@ export default function HomePage() {
             DoorDash &amp; more — then takes you there to order.
           </p>
 
-          {/* Search bar */}
+          {/* Mode toggle */}
+          <div className="inline-flex rounded-full bg-white/15 border border-white/25 p-1 mb-3">
+            {[
+              { key: "search", label: "Find dishes", Icon: Search },
+              { key: "ask", label: "Ask AI", Icon: MessageCircle },
+            ].map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                className={`flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-full transition-all ${
+                  mode === key ? "bg-white text-green-700 font-semibold" : "text-white hover:bg-white/20"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search / Ask bar */}
           <div className="flex gap-2 max-w-2xl mx-auto shadow-xl rounded-xl">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && runSearch()}
-              placeholder='Try "high protein low carb" or "under 400 cal"'
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              placeholder={
+                mode === "ask"
+                  ? 'Ask about food — "what should I eat after a workout?"'
+                  : 'Try "high protein low carb" or "under 400 cal"'
+              }
               className="flex-1 px-5 py-4 rounded-l-xl text-base border-0 focus:outline-none focus:ring-2 focus:ring-green-300"
             />
             <Button
-              onClick={() => runSearch()}
+              onClick={handleSubmit}
               disabled={isSearching}
               className="bg-white text-green-700 hover:bg-green-50 px-7 rounded-r-xl text-base font-bold"
             >
               {isSearching ? (
                 <span className="flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                  Searching
+                  {mode === "ask" ? "Thinking" : "Searching"}
                 </span>
               ) : (
                 <span className="flex items-center gap-2">
-                  <Search className="w-4 h-4" /> Search
+                  {mode === "ask" ? <MessageCircle className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+                  {mode === "ask" ? "Ask" : "Search"}
                 </span>
               )}
             </Button>
+          </div>
+
+          {/* Zipcode: restaurants near me */}
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <div className="flex items-center gap-1.5 bg-white/15 border border-white/25 rounded-full pl-3 pr-1 py-1">
+              <MapPin className="w-4 h-4 text-green-100" />
+              <input
+                type="text"
+                inputMode="numeric"
+                maxLength={5}
+                value={zipcode}
+                onChange={(e) => setZipcode(e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => e.key === "Enter" && handleFindNearby()}
+                placeholder="Zipcode"
+                className="w-20 bg-transparent text-white placeholder-green-200 text-sm focus:outline-none"
+              />
+              <button
+                onClick={handleFindNearby}
+                disabled={isLocating}
+                className="text-xs font-semibold bg-white text-green-700 rounded-full px-3 py-1 hover:bg-green-50 disabled:opacity-60"
+              >
+                {isLocating ? "…" : "Near me"}
+              </button>
+            </div>
           </div>
 
           {showQuotaBadge && (
@@ -218,6 +332,67 @@ export default function HomePage() {
 
       {/* ── Main Content ────────────────────────────────────────────────────── */}
       <main className="container mx-auto px-6 py-10 max-w-6xl">
+
+        {/* ── Nearby restaurants ─────────────────────────────────────────── */}
+        {nearby && nearby.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <MapPin className="w-5 h-5 text-green-600" />
+                Restaurants near {zipcode}
+              </h2>
+              <button onClick={() => setNearby(null)} className="text-xs text-gray-400 hover:text-gray-600">
+                Hide
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {nearby.map((r) => (
+                <button
+                  key={`${r.restaurant_name}-${r.distance_km}`}
+                  onClick={() => handleRestaurantClick(r.restaurant_name)}
+                  className="text-left rounded-xl border border-gray-100 bg-gray-50 hover:border-green-300 hover:shadow-md transition-all p-4"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <span className="font-bold text-sm leading-tight">{r.restaurant_name}</span>
+                    <Badge className={`text-xs border-0 shrink-0 ${PLATFORMS[r.source_platform]?.badgeClass ?? "bg-gray-100 text-gray-600"}`}>
+                      {PLATFORMS[r.source_platform]?.label ?? r.source_platform}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {r.distance_km} km · {r.item_count} dish{r.item_count !== 1 ? "es" : ""}
+                    {r.cuisine_type ? ` · ${r.cuisine_type}` : ""}
+                  </p>
+                  <p className="text-xs text-green-600 font-semibold mt-2">
+                    Find nutrition matches →
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── Assistant answer ───────────────────────────────────────────── */}
+        {askReply && (
+          <div className={`rounded-2xl border p-5 mb-8 ${
+            askReply.on_topic ? "bg-white border-gray-100 shadow-sm" : "bg-gray-50 border-gray-200"
+          }`}>
+            <div className="flex gap-3">
+              <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-4 h-4 text-green-700" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-500 mb-1">Nutribuddy assistant</p>
+                <p className="text-gray-800">{askReply.answer}</p>
+                {!askReply.on_topic && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    I stick to food, nutrition, and ordering questions.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div id="ai-results">
           {searchResults.length > 0 && (
             <>
@@ -230,7 +405,9 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
                   <h2 className="text-2xl font-bold">
-                    {resultsPlatform
+                    {activeRestaurant
+                      ? `Matches at ${activeRestaurant}`
+                      : resultsPlatform
                       ? `Matches on ${PLATFORMS[resultsPlatform]?.label ?? resultsPlatform}`
                       : "Your AI Matches"}
                   </h2>
@@ -239,6 +416,15 @@ export default function HomePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {activeRestaurant && (
+                    <Button
+                      variant="outline"
+                      className="text-sm"
+                      onClick={() => runSearch(searchQuery, activePlatform, { consumeQuota: false })}
+                    >
+                      All Restaurants
+                    </Button>
+                  )}
                   {resultsPlatform && (
                     <Button
                       variant="outline"

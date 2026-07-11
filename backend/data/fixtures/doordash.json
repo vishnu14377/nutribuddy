@@ -20,7 +20,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.921143,
+    "longitude": -77.093899,
+    "postal_code": "20009"
   },
   {
     "id": "4b544565-c1d3-4e80-8820-75b1b47ad7a1",
@@ -44,7 +47,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.921143,
+    "longitude": -77.093899,
+    "postal_code": "20009"
   },
   {
     "id": "03e0e217-4831-4ba9-8b97-8422f3a2bd47",
@@ -67,7 +73,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.921143,
+    "longitude": -77.093899,
+    "postal_code": "20009"
   },
   {
     "id": "27c0d817-9697-4012-b13c-9eac1b272040",
@@ -92,7 +101,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.884703,
+    "longitude": -77.070115,
+    "postal_code": "20009"
   },
   {
     "id": "5cc0236d-9af8-47b4-b036-965cd405a2a8",
@@ -115,7 +127,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.884703,
+    "longitude": -77.070115,
+    "postal_code": "20009"
   },
   {
     "id": "987b47b2-25f3-48bf-ac10-230d5265f125",
@@ -138,7 +153,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.884703,
+    "longitude": -77.070115,
+    "postal_code": "20009"
   },
   {
     "id": "804c05b2-d143-4aca-8fb5-dba18dc2b522",
@@ -161,7 +179,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.930847,
+    "longitude": -77.015696,
+    "postal_code": "20009"
   },
   {
     "id": "4c65521e-9577-4fe1-b30a-a86686d73aae",
@@ -184,7 +205,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.930847,
+    "longitude": -77.015696,
+    "postal_code": "20009"
   },
   {
     "id": "389858a8-ab9f-4e3e-b2a6-d5bec332c5cb",
@@ -208,7 +232,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.930847,
+    "longitude": -77.015696,
+    "postal_code": "20009"
   },
   {
     "id": "f847191f-71b0-4e75-b8bd-3ac4bca9f783",
@@ -233,7 +260,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.946418,
+    "longitude": -77.086467,
+    "postal_code": "20009"
   },
   {
     "id": "920f0d9c-8c29-445f-baab-04d1494cb4a5",
@@ -256,7 +286,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.946418,
+    "longitude": -77.086467,
+    "postal_code": "20009"
   },
   {
     "id": "4eda48ef-37db-4c73-8281-35800261e32e",
@@ -281,7 +314,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.946418,
+    "longitude": -77.086467,
+    "postal_code": "20009"
   },
   {
     "id": "c10c3a64-2b8a-4dbe-82b1-19d0512c9648",
@@ -304,7 +340,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.899392,
+    "longitude": -77.093324,
+    "postal_code": "20009"
   },
   {
     "id": "81cc674e-ff26-4957-a371-d7395b511e65",
@@ -325,7 +364,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.899392,
+    "longitude": -77.093324,
+    "postal_code": "20009"
   },
   {
     "id": "14310c70-983d-43ad-a805-6cef5790af05",
@@ -348,7 +390,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.899392,
+    "longitude": -77.093324,
+    "postal_code": "20009"
   },
   {
     "id": "7faf6eb3-d5e7-40a2-8299-289f2728faf3",
@@ -369,7 +414,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.879064,
+    "longitude": -77.036257,
+    "postal_code": "20009"
   },
   {
     "id": "a3b2ba03-8964-4c9f-8e87-f962dee74cce",
@@ -392,7 +440,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.879064,
+    "longitude": -77.036257,
+    "postal_code": "20009"
   },
   {
     "id": "8014c3b1-3cf3-4d49-95b0-7b609a9b0f46",
@@ -415,7 +466,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.879064,
+    "longitude": -77.036257,
+    "postal_code": "20009"
   },
   {
     "id": "9e270f8b-3e29-4948-89cc-d398493bef88",
@@ -438,7 +492,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.859854,
+    "longitude": -77.073039,
+    "postal_code": "20009"
   },
   {
     "id": "b09cd441-d433-4661-a944-38772ef66071",
@@ -461,7 +518,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.859854,
+    "longitude": -77.073039,
+    "postal_code": "20009"
   },
   {
     "id": "b97a4180-d574-406b-92fa-e8727624d6b4",
@@ -485,7 +545,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.859854,
+    "longitude": -77.073039,
+    "postal_code": "20009"
   },
   {
     "id": "3b63c80f-a242-4eda-aa36-486e3e75da66",
@@ -508,7 +571,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.922188,
+    "longitude": -77.031507,
+    "postal_code": "20009"
   },
   {
     "id": "864a11a0-e038-45a3-87a7-40e30ded7b42",
@@ -534,7 +600,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.922188,
+    "longitude": -77.031507,
+    "postal_code": "20009"
   },
   {
     "id": "08e72b91-4295-430b-82dd-822bc51e21ac",
@@ -558,7 +627,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.922188,
+    "longitude": -77.031507,
+    "postal_code": "20009"
   },
   {
     "id": "bb7225bc-6ce0-4d0f-8043-c80fa77d38b2",
@@ -581,7 +653,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.879244,
+    "longitude": -77.026188,
+    "postal_code": "20009"
   },
   {
     "id": "d44bbe9f-d291-4df1-9b8a-aabb89726cc2",
@@ -604,7 +679,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.879244,
+    "longitude": -77.026188,
+    "postal_code": "20009"
   },
   {
     "id": "b088725b-4a33-4f92-817a-fc31bf26fd72",
@@ -627,7 +705,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.879244,
+    "longitude": -77.026188,
+    "postal_code": "20009"
   },
   {
     "id": "f1ad65d3-b004-47f4-8382-2954d6689224",
@@ -648,7 +729,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.938143,
+    "longitude": -77.09612,
+    "postal_code": "20009"
   },
   {
     "id": "0e3a8342-9d0f-4bb0-ac51-c7ac3c65c5bc",
@@ -673,7 +757,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.938143,
+    "longitude": -77.09612,
+    "postal_code": "20009"
   },
   {
     "id": "cb3c5b83-0f3f-4e89-a662-8e5312ebe7b0",
@@ -696,7 +783,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.937782,
+    "longitude": -77.013123,
+    "postal_code": "20009"
   },
   {
     "id": "a00a8f7c-d9fc-48cc-9752-2112bc63d8af",
@@ -720,7 +810,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.937782,
+    "longitude": -77.013123,
+    "postal_code": "20009"
   },
   {
     "id": "03d402b6-b355-407d-8e40-b6f23821af5d",
@@ -743,7 +836,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.891225,
+    "longitude": -77.078242,
+    "postal_code": "20009"
   },
   {
     "id": "17ab0f70-6c18-44b5-9b2a-c5521e086c6d",
@@ -766,7 +862,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.891225,
+    "longitude": -77.078242,
+    "postal_code": "20009"
   },
   {
     "id": "f4a0e447-500c-4189-8a80-8222ff05967d",
@@ -789,7 +888,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.952921,
+    "longitude": -77.056509,
+    "postal_code": "20009"
   },
   {
     "id": "0ace73ef-fac5-4884-ba3e-158ad91ac5ea",
@@ -813,7 +915,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.952921,
+    "longitude": -77.056509,
+    "postal_code": "20009"
   },
   {
     "id": "b63c44fc-0857-4eae-8ec0-8a034b33cd55",
@@ -836,7 +941,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.866475,
+    "longitude": -77.085294,
+    "postal_code": "20009"
   },
   {
     "id": "4624c695-dbb3-4dd4-a7da-ab3e747fa6d6",
@@ -861,7 +969,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.866475,
+    "longitude": -77.085294,
+    "postal_code": "20009"
   },
   {
     "id": "a7161a2b-49aa-4b01-a4f3-bf090e11ae19",
@@ -885,7 +996,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.941949,
+    "longitude": -77.024453,
+    "postal_code": "20009"
   },
   {
     "id": "39bc7fca-05e8-438f-bba9-32a654d33e2f",
@@ -909,7 +1023,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.941949,
+    "longitude": -77.024453,
+    "postal_code": "20009"
   },
   {
     "id": "96abd982-7531-48f5-ae3d-f5ed7564274b",
@@ -933,7 +1050,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.937913,
+    "longitude": -77.009332,
+    "postal_code": "20009"
   },
   {
     "id": "c421b12b-eb12-4b2c-be23-fbc91059461f",
@@ -957,7 +1077,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.937913,
+    "longitude": -77.009332,
+    "postal_code": "20009"
   },
   {
     "id": "3d8fe49b-9683-4c23-a74f-9499c58152cb",
@@ -980,7 +1103,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.910823,
+    "longitude": -76.980126,
+    "postal_code": "20009"
   },
   {
     "id": "94786fa5-5e34-4cec-9b57-3ee54acd37e1",
@@ -1003,7 +1129,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.910823,
+    "longitude": -76.980126,
+    "postal_code": "20009"
   },
   {
     "id": "c263e245-4856-4cc4-9159-c03a754ef676",
@@ -1028,7 +1157,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.895053,
+    "longitude": -77.030655,
+    "postal_code": "20009"
   },
   {
     "id": "aabe8d2b-86b6-48c0-906f-52e2488500df",
@@ -1049,7 +1181,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.895053,
+    "longitude": -77.030655,
+    "postal_code": "20009"
   },
   {
     "id": "5196cf87-d4f0-4163-84c5-3e973e4b5285",
@@ -1070,7 +1205,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.94014,
+    "longitude": -77.022678,
+    "postal_code": "20009"
   },
   {
     "id": "bb721549-daa5-42fc-ba24-db93abfe3d5b",
@@ -1095,7 +1233,10 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.94014,
+    "longitude": -77.022678,
+    "postal_code": "20009"
   },
   {
     "id": "9685c1ca-686f-4ae6-8642-e86b2a540799",
@@ -1119,6 +1260,9 @@
     "currency": "USD",
     "source_platform": "doordash",
     "order_url": null,
-    "uber_uuid": ""
+    "uber_uuid": "",
+    "latitude": 38.943371,
+    "longitude": -77.027618,
+    "postal_code": "20009"
   }
 ]

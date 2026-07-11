@@ -52,6 +52,10 @@ class Recipe(BaseModel):
     order_url: Optional[str] = None
     uber_uuid: Optional[str] = None
     tags: Optional[str] = None
+    # Restaurant location (for zipcode-based "near me" discovery)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    postal_code: Optional[str] = None
 
     @field_validator('currency')
     @classmethod
