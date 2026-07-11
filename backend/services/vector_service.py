@@ -111,6 +111,7 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
         """Build Pinecone metadata for a recipe (Pinecone has size limits)."""
         return {
             'name': recipe.name[:200] if recipe.name else '',
+            'description': (recipe.description or '')[:300],
             'restaurant': (recipe.restaurant_name or '')[:100],
             'cuisine_type': (recipe.cuisine_type or '')[:50],
             'spice_level': (recipe.spice_level or 'Mild')[:20],

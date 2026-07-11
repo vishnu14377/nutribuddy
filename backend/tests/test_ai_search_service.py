@@ -68,8 +68,10 @@ class TestMacroAndPriceParsing:
     def test_keto_sets_strict_carb_gate(self):
         assert parse_intent('keto dinner').max_carbs == 15
 
-    def test_low_carb_sets_loose_gate(self):
-        assert parse_intent('low carb dinner').max_carbs == 30
+    def test_low_carb_is_a_real_constraint(self):
+        # Round-2 fix: 28g carbs presented as a clean "low carb" match reads
+        # as an ignored constraint
+        assert parse_intent('low carb dinner').max_carbs == 20
 
     def test_bunless_implies_carb_constraint(self):
         assert parse_intent('bunless burger').max_carbs == 20
@@ -77,14 +79,24 @@ class TestMacroAndPriceParsing:
     def test_high_protein_default_threshold(self):
         assert parse_intent('high protein meal').min_protein == 30
 
+    def test_high_fat_sets_fat_floor(self):
+        # Round-2 fix: keto's other half was silently dropped
+        intent = parse_intent('low carb high fat meal')
+        assert intent.min_fat == 20
+        assert intent.max_carbs == 20
+
+    def test_value_seeking_parsed(self):
+        assert parse_intent('cheap high protein lunch').value_seek is True
+        assert parse_intent('best value dinner').value_seek is True
+
     def test_typo_protien_still_parses(self):
         assert parse_intent('hi protien lo carb dinner').min_protein == 30
-        assert parse_intent('hi protien lo carb dinner').max_carbs == 30
+        assert parse_intent('hi protien lo carb dinner').max_carbs == 20
 
     def test_spanish_low_carb(self):
         intent = parse_intent('comida alta en proteinas y baja en carbohidratos')
         assert intent.min_protein == 30
-        assert intent.max_carbs == 30
+        assert intent.max_carbs == 20
 
 
 class TestDietaryParsing:
@@ -102,14 +114,15 @@ class TestDietaryParsing:
 # ── Constraint filtering (via _passes) ───────────────────────────────────────
 
 def make_candidate(name, protein=0, carbs=0, calories=0, fat=0, price=0,
-                   currency='USD', tags='', score=0.5, id=None):
+                   currency='USD', tags='', score=0.5, id=None,
+                   description='', platform='ubereats'):
     return {
         'id': id or name,
         'score': score,
         'metadata': {
-            'name': name, 'protein': protein, 'carbs': carbs,
-            'calories': calories, 'fat': fat, 'price': price,
-            'currency': currency, 'dietary_tags': tags,
+            'name': name, 'description': description, 'protein': protein,
+            'carbs': carbs, 'calories': calories, 'fat': fat, 'price': price,
+            'currency': currency, 'dietary_tags': tags, 'platform': platform,
         },
     }
 
@@ -145,6 +158,25 @@ class TestPasses:
         assert not svc._passes(make_candidate('Chicken Bowl'), intent)
         assert not svc._passes(make_candidate('Lamb Kofta', tags='high-protein'), intent)
 
+    def test_vegetarian_checks_description_not_just_name(self, svc):
+        # Round-2 CRITICAL: "Harvest Bowl" sounds meatless; its description
+        # says roasted chicken
+        intent = QueryIntent(vegetarian=True)
+        bowl = make_candidate('Harvest Bowl', description='Roasted chicken, sweet potatoes, wild rice')
+        assert not svc._passes(bowl, intent)
+        nuggets = make_candidate('Grilled Nuggets (12 ct)', description='Bite-sized grilled chicken')
+        assert not svc._passes(nuggets, intent)
+
+    def test_fat_floor_enforced(self, svc):
+        intent = QueryIntent(max_carbs=20, min_fat=20)
+        assert svc._passes(make_candidate('Steak', carbs=5, fat=42), intent)
+        assert not svc._passes(make_candidate('Egg White Omelette', carbs=8, fat=9), intent)
+
+    def test_value_seek_requires_usd_price(self, svc):
+        intent = QueryIntent(value_seek=True)
+        assert svc._passes(make_candidate('Priced', price=9.99, currency='USD'), intent)
+        assert not svc._passes(make_candidate('Unpriced', price=349, currency=''), intent)
+
     def test_vegan_requires_tag(self, svc):
         intent = QueryIntent(vegan=True, vegetarian=True)
         assert svc._passes(make_candidate('Tofu Bowl', tags='vegan'), intent)
@@ -175,7 +207,9 @@ class FakeDB:
         for c in candidates:
             md = c['metadata']
             self.rows[c['id']] = {
-                'id': c['id'], 'name': md['name'], 'ingredients': [], 'dietary_tags': [],
+                'id': c['id'], 'name': md['name'], 'ingredients': [],
+                'description': md.get('description') or None,
+                'dietary_tags': [t for t in (md.get('dietary_tags') or '').split(',') if t],
                 'estimated_calories': md['calories'] or None,
                 'estimated_protein': md['protein'] or None,
                 'estimated_carbs': md['carbs'] or None,
@@ -253,6 +287,52 @@ class TestSearchBehavior:
         names = [r['recipe'].name for r in results]
         assert names == ['Cheap Protein']
 
+    def test_vegan_with_unreachable_macro_falls_back_within_vegan_pool(self):
+        # Round-2 fix: "vegan high protein" must degrade to the best vegan
+        # options, never a blank screen (and never meat)
+        candidates = [
+            make_candidate('Chicken Bowl', protein=45, score=0.6),
+            make_candidate('Tofu Stir-Fry', protein=22, tags='vegan', score=0.5),
+            make_candidate('Falafel Bowl', protein=17, tags='vegan,vegetarian', score=0.45),
+        ]
+        results = run_search(candidates, 'vegan high protein')
+        names = [r['recipe'].name for r in results]
+        assert 'Chicken Bowl' not in names
+        assert names[0] == 'Tofu Stir-Fry'  # closest to the protein target
+        assert all(r['meets_constraints'] is False for r in results)
+
+    def test_combined_constraint_fallback_ranks_by_composite_shortfall(self):
+        # Round-2 fix: '50g protein under 500 cal' must surface the 45g/400cal
+        # dish, not low-protein items that merely fit the calorie cap
+        candidates = [
+            make_candidate('Avocado Toast', protein=10, calories=340, score=0.6),
+            make_candidate('Tilapia Fish', protein=45, calories=400, score=0.4),
+            make_candidate('Yogurt Parfait', protein=18, calories=250, score=0.5),
+        ]
+        results = run_search(candidates, '50g protein under 500 calories')
+        assert results[0]['recipe'].name == 'Tilapia Fish'
+        assert all(r['meets_constraints'] is False for r in results)
+
+    def test_unorderable_platform_demoted_at_equal_relevance(self):
+        candidates = [
+            make_candidate('Partner Keto Plate', protein=45, carbs=8, score=0.52, platform='biterush'),
+            make_candidate('Orderable Keto Bowl', protein=42, carbs=10, score=0.48, platform='ubereats'),
+        ]
+        results = run_search(candidates, 'keto dinner')
+        # 0.48 orderable beats 0.52 unorderable after the 0.08 demotion
+        assert results[0]['recipe'].name == 'Orderable Keto Bowl'
+
+    def test_value_query_ranks_by_protein_per_dollar(self):
+        candidates = [
+            make_candidate('Pricey Protein', protein=50, price=20.0, score=0.6),   # 2.5 g/$
+            make_candidate('Value Protein', protein=40, price=8.0, score=0.4),     # 5.0 g/$
+            make_candidate('Unpriced Partner', protein=60, price=349, currency='', score=0.7, platform='biterush'),
+        ]
+        results = run_search(candidates, 'cheap high protein meal')
+        names = [r['recipe'].name for r in results]
+        assert names[0] == 'Value Protein'
+        assert 'Unpriced Partner' not in names
+
 
 # ── Explanations ─────────────────────────────────────────────────────────────
 
@@ -282,6 +362,22 @@ class TestExplanationService:
             'meal under 100 calories', recipe, intent=intent, meets_constraints=False)
         assert 'over your 100 cal limit' in text
         assert 'only' not in text.lower()
+        assert text.count('380') == 1  # each number stated exactly once
+
+    def test_at_limit_boundary_wording(self):
+        recipe = Recipe(name='Bowl', estimated_calories=400, estimated_protein=30, estimated_carbs=20)
+        intent = parse_intent('under 400 cal')
+        text = ExplanationService.generate_explanation(
+            'under 400 cal', recipe, intent=intent, meets_constraints=False)
+        assert 'at your 400 cal limit' in text
+
+    def test_low_carb_enforcement_is_visible(self):
+        # Round-2 fix: two personas concluded 'low carb' was ignored because
+        # explanations never mentioned carbs
+        recipe = Recipe(name='Cobb Salad', estimated_carbs=18, estimated_protein=35, estimated_calories=450)
+        text = ExplanationService.generate_explanation('low carb salad', recipe)
+        assert '18g carbs' in text
+        assert 'fits your low-carb target' in text
 
     def test_plain_query_gives_summary_with_restaurant(self):
         recipe = Recipe(name='Bowl', estimated_calories=520, estimated_protein=48,

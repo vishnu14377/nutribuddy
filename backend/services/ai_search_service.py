@@ -29,14 +29,22 @@ RELEVANCE_FLOOR = 0.25
 SINGLE_MEAL_CALORIE_CEILING = 1400
 
 MULTI_SERVING_NAME_RE = re.compile(
-    r'family|meal deal|party pack|party size|bundle|2 liter|2-liter', re.IGNORECASE
+    r'family|meal deal|party pack|party size|bundle|2 liter|2-liter|'
+    r'\(\s*\d+\s*servings?\s*\)', re.IGNORECASE
 )
 
 MEAT_WORDS_RE = re.compile(
     r'chicken|beef|steak|lamb|pork|bacon|ham\b|turkey|salmon|tuna|shrimp|prawn|'
     r'fish|crab|gyro|kofta|meatball|pepperoni|sausage|chorizo|brisket|ribs?\b|'
-    r'wings?\b|carnitas|pastrami|prosciutto|anchov', re.IGNORECASE
+    r'wings?\b|carnitas|pastrami|prosciutto|anchov|nuggets?\b|duck|veal|lobster|'
+    r'calamari|squid|oysters?\b|clams?\b|scallops?\b', re.IGNORECASE
 )
+
+# Platforms with a working order handoff. Items from other sources are valid
+# results but get a small ranking demotion so orderable dishes win ties —
+# a Top Pick the user cannot buy breaks the product's core promise.
+ORDERABLE_PLATFORMS = {'ubereats', 'doordash'}
+UNORDERABLE_SCORE_PENALTY = 0.08
 
 PROTEIN_TERMS = (
     'high protein', 'protein rich', 'protein-rich', 'high-protein',
@@ -52,14 +60,19 @@ NO_BREAD_TERMS = ('bunless', 'no bun', 'no bread', 'lettuce wrap', 'without bun'
 VEGETARIAN_TERMS = ('vegetarian', 'meatless', 'plant based', 'plant-based', 'no meat', 'veggie', 'vegetariano')
 VEGAN_TERMS = ('vegan', 'vegano')
 LOW_CAL_INTENT_TERMS = ('low cal', 'low-cal', 'light', 'diet', 'healthy')
+HIGH_FAT_TERMS = ('high fat', 'high-fat', 'alta en grasa')
+VALUE_TERMS = ('cheap', 'budget', 'best value', 'affordable', 'value for money', 'good value')
 
 # Default threshold when the user says "high protein" without a number.
 DEFAULT_MIN_PROTEIN = 30
-# "keto" means a strict per-meal carb budget; "low carb" is looser.
+# "keto" means a strict per-meal carb budget; "low carb" is a real constraint
+# too — 28g of carbs presented as a clean "low carb" match reads as ignored.
 KETO_MAX_CARBS = 15
-LOW_CARB_MAX_CARBS = 30
+LOW_CARB_MAX_CARBS = 20
 NO_BREAD_MAX_CARBS = 20
 GENERAL_LOW_CAL_LIMIT = 500
+# "high fat" (the other half of keto) is a floor, not a cap.
+DEFAULT_MIN_FAT = 20
 
 
 @dataclass
@@ -69,19 +82,25 @@ class QueryIntent:
     calorie_limit: Optional[int] = None
     max_carbs: Optional[float] = None
     min_protein: Optional[float] = None
+    min_fat: Optional[float] = None
     max_fat: Optional[float] = None
     price_limit: Optional[float] = None
     vegetarian: bool = False
     vegan: bool = False
-    impossible: bool = False  # e.g. "under 0 calories"
+    value_seek: bool = False   # "cheap" / "best value" — rank by value among USD-priced items
+    impossible: bool = False   # e.g. "under 0 calories"
 
     def has_nutrition_constraint(self) -> bool:
         return any(v is not None for v in (
-            self.calorie_limit, self.max_carbs, self.min_protein, self.max_fat
+            self.calorie_limit, self.max_carbs, self.min_protein, self.min_fat, self.max_fat
         )) or self.vegetarian or self.vegan
 
     def has_any_constraint(self) -> bool:
-        return self.has_nutrition_constraint() or self.price_limit is not None
+        return self.has_nutrition_constraint() or self.price_limit is not None or self.value_seek
+
+    def dietary_only(self) -> 'QueryIntent':
+        """Just the vegetarian/vegan part — used to build the safe fallback pool."""
+        return QueryIntent(vegetarian=self.vegetarian, vegan=self.vegan)
 
     def constraint_labels(self) -> List[str]:
         labels = []
@@ -91,10 +110,14 @@ class QueryIntent:
             labels.append(f"≤{self.max_carbs:g}g carbs")
         if self.min_protein is not None:
             labels.append(f"≥{self.min_protein:g}g protein")
+        if self.min_fat is not None:
+            labels.append(f"≥{self.min_fat:g}g fat")
         if self.max_fat is not None:
             labels.append(f"≤{self.max_fat:g}g fat")
         if self.price_limit is not None:
             labels.append(f"under ${self.price_limit:g}")
+        if self.value_seek:
+            labels.append("best value")
         if self.vegan:
             labels.append("vegan")
         elif self.vegetarian:
@@ -180,12 +203,20 @@ def parse_intent(query: str) -> QueryIntent:
         elif any(t in work for t in LOW_CARB_TERMS):
             intent.max_carbs = LOW_CARB_MAX_CARBS
 
-    # 5. Dietary intents
+    # 5. Fat floor ("high fat" — the other half of keto)
+    if intent.min_fat is None and any(t in work for t in HIGH_FAT_TERMS):
+        intent.min_fat = DEFAULT_MIN_FAT
+
+    # 6. Dietary intents
     if any(t in work for t in VEGAN_TERMS):
         intent.vegan = True
         intent.vegetarian = True
     elif any(t in work for t in VEGETARIAN_TERMS):
         intent.vegetarian = True
+
+    # 7. Value seeking
+    if any(t in work for t in VALUE_TERMS):
+        intent.value_seek = True
 
     return intent
 
@@ -256,23 +287,37 @@ class EnhancedAISearchService:
             logger.info("All candidates below relevance floor — honest empty result")
             return []
 
-        qualified = [c for c in candidates if self._passes(c, intent)]
+        # The dietary constraint is HARD: meat never substitutes for vegetarian.
+        # Macro constraints soften to a closest-option fallback WITHIN the
+        # dietary-safe pool, so "vegan high protein" degrades to the best vegan
+        # options instead of a blank screen.
+        if intent.vegetarian or intent.vegan:
+            pool = [c for c in candidates if self._passes(c, intent.dietary_only())]
+            if not pool:
+                logger.info("No vegetarian/vegan matches — honest empty result")
+                return []
+        else:
+            pool = candidates
+
+        qualified = [c for c in pool if self._passes(c, intent)]
 
         if qualified:
             results, meets = qualified, True
         elif intent.has_any_constraint():
-            # Honest fallback: closest items by the binding constraint, flagged.
-            # Vegetarian/vegan misses are disqualifying — never substitute meat.
-            if intent.vegetarian or intent.vegan:
-                logger.info("No vegetarian/vegan matches — honest empty result")
-                return []
-            results, meets = self._closest_fallback(candidates, intent), False
+            results, meets = self._closest_fallback(pool, intent), False
             logger.info(f"No items satisfy {intent.constraint_labels()} — returning {len(results)} closest, flagged")
         else:
-            results, meets = candidates, True
+            results, meets = pool, True
 
-        # Constraints filter; vector relevance ranks. Display order == ranking.
-        results = sorted(results, key=lambda c: c['score'], reverse=True)
+        if meets:
+            # Constraints filter; vector relevance ranks — with a small demotion
+            # for items the user cannot actually order.
+            if intent.value_seek:
+                results = self._rank_by_value(results, intent)
+            else:
+                results = sorted(results, key=self._rank_key, reverse=True)
+        # Fallback results keep their closest-first ordering — re-sorting by
+        # score would bury the item that misses the constraint least.
 
         # Dedup + batch fetch (avoids N+1 queries)
         top_results = []
@@ -290,6 +335,14 @@ class EnhancedAISearchService:
             recipe_doc = recipes_dict.get(result['id'])
             if recipe_doc:
                 recipe = Recipe(**recipe_doc)
+                # Belt-and-suspenders diet safety: metadata descriptions are
+                # truncated, so re-verify against the full stored description.
+                if (intent.vegetarian or intent.vegan):
+                    tags = ' '.join(recipe.dietary_tags or []).lower()
+                    tagged = ('vegan' in tags) if intent.vegan else ('vegetarian' in tags or 'vegan' in tags)
+                    if not tagged and (intent.vegan or MEAT_WORDS_RE.search(f"{recipe.name} {recipe.description or ''}")):
+                        logger.warning(f"Diet-safety drop: {recipe.name} (untagged, meat words in description)")
+                        continue
                 final_results.append({
                     'recipe': recipe,
                     'match_score': result['score'],
@@ -302,10 +355,31 @@ class EnhancedAISearchService:
         logger.info(f"Returning {len(final_results)} results (meets_constraints={meets})")
         return final_results
 
+    @staticmethod
+    def _rank_key(candidate: Dict) -> float:
+        """Vector score, minus a small demotion for un-orderable sources."""
+        platform = candidate.get('metadata', {}).get('platform', '') or ''
+        penalty = 0 if platform in ORDERABLE_PLATFORMS else UNORDERABLE_SCORE_PENALTY
+        return candidate['score'] - penalty
+
+    @staticmethod
+    def _rank_by_value(results: List[Dict], intent: QueryIntent) -> List[Dict]:
+        """'cheap' / 'best value': rank USD-priced items by value, not similarity."""
+        def md(c, key, default=0):
+            return c.get('metadata', {}).get(key, default) or default
+
+        priced = [c for c in results if md(c, 'currency', '') == 'USD' and md(c, 'price') > 0]
+        if not priced:
+            return results
+        if intent.min_protein is not None:
+            return sorted(priced, key=lambda c: md(c, 'protein') / md(c, 'price'), reverse=True)
+        return sorted(priced, key=lambda c: md(c, 'price'))
+
     def _passes(self, candidate: Dict, intent: QueryIntent) -> bool:
         """Hard constraint filter for one candidate, using vector metadata."""
         md = candidate.get('metadata', {})
         name = md.get('name', '') or ''
+        description = md.get('description', '') or ''
         calories = md.get('calories', 0) or 0
         protein = md.get('protein', 0) or 0
         carbs = md.get('carbs', 0) or 0
@@ -325,7 +399,9 @@ class EnhancedAISearchService:
             return False
         if intent.vegetarian and not intent.vegan:
             is_tagged = 'vegetarian' in tags or 'vegan' in tags
-            if not is_tagged and MEAT_WORDS_RE.search(name):
+            # Descriptions matter: "Harvest Bowl" sounds meatless but its
+            # description says "roasted chicken" — check both.
+            if not is_tagged and MEAT_WORDS_RE.search(f"{name} {description}"):
                 return False
 
         if intent.calorie_limit is not None and not calories < intent.calorie_limit:
@@ -334,16 +410,23 @@ class EnhancedAISearchService:
             return False
         if intent.min_protein is not None and protein < intent.min_protein:
             return False
+        if intent.min_fat is not None and fat < intent.min_fat:
+            return False
         if intent.max_fat is not None and fat > intent.max_fat:
             return False
         # Price limits only compare like-for-like: USD-labeled items
         if intent.price_limit is not None:
             if currency != 'USD' or price <= 0 or price > intent.price_limit:
                 return False
+        if intent.value_seek:
+            if currency != 'USD' or price <= 0:
+                return False
         return True
 
     def _closest_fallback(self, candidates: List[Dict], intent: QueryIntent) -> List[Dict]:
-        """Nothing qualified: return the closest items by the binding constraint."""
+        """Nothing qualified: return the items with the smallest composite
+        shortfall across ALL set constraints (a 45g-protein/400-cal dish is the
+        right answer to '50g protein under 500 cal', not low-protein toast)."""
         def md(c, key, default=0):
             return c.get('metadata', {}).get(key, default) or default
 
@@ -351,17 +434,26 @@ class EnhancedAISearchService:
         if intent.has_nutrition_constraint():
             pool = [c for c in pool if not MULTI_SERVING_NAME_RE.search(md(c, 'name', ''))] or pool
 
-        if intent.calorie_limit is not None:
-            pool = sorted(pool, key=lambda c: md(c, 'calories', 9999))
-        elif intent.max_carbs is not None:
-            pool = sorted(pool, key=lambda c: md(c, 'carbs', 9999))
-        elif intent.min_protein is not None:
-            pool = sorted(pool, key=lambda c: md(c, 'protein', 0), reverse=True)
-        elif intent.max_fat is not None:
-            pool = sorted(pool, key=lambda c: md(c, 'fat', 9999))
-        elif intent.price_limit is not None:
-            pool = sorted(pool, key=lambda c: md(c, 'price', 9999))
-        return pool[:5]
+        def shortfall(c) -> float:
+            total = 0.0
+            if intent.calorie_limit is not None:
+                total += max(0, md(c, 'calories') - intent.calorie_limit) / intent.calorie_limit
+            if intent.max_carbs is not None:
+                total += max(0, md(c, 'carbs') - intent.max_carbs) / intent.max_carbs
+            if intent.min_protein is not None:
+                total += max(0, intent.min_protein - md(c, 'protein')) / intent.min_protein
+            if intent.min_fat is not None:
+                total += max(0, intent.min_fat - md(c, 'fat')) / intent.min_fat
+            if intent.max_fat is not None:
+                total += max(0, md(c, 'fat') - intent.max_fat) / intent.max_fat
+            if intent.price_limit is not None:
+                if md(c, 'currency', '') == 'USD' and md(c, 'price') > 0:
+                    total += max(0, md(c, 'price') - intent.price_limit) / intent.price_limit
+                else:
+                    total += 1.0  # unpriced/foreign items are far from a budget ask
+            return total
+
+        return sorted(pool, key=lambda c: (shortfall(c), -c['score']))[:5]
 
 
 class ExplanationService:
@@ -383,18 +475,30 @@ class ExplanationService:
         protein = recipe.estimated_protein or 0
         carbs = recipe.estimated_carbs or 0
         calories = recipe.estimated_calories or 0
+        fat = recipe.estimated_fat or 0
 
         # Honest phrasing when this item is a closest-option fallback
         if intent is not None and not meets_constraints:
             missed = []
             if intent.calorie_limit is not None and calories >= intent.calorie_limit:
-                missed.append(f"{calories} cal (over your {intent.calorie_limit} cal limit)")
+                word = 'at' if calories == intent.calorie_limit else 'over'
+                missed.append(f"{calories} cal ({word} your {intent.calorie_limit} cal limit)")
             if intent.max_carbs is not None and carbs > intent.max_carbs:
                 missed.append(f"{carbs:g}g carbs (over your {intent.max_carbs:g}g limit)")
             if intent.min_protein is not None and protein < intent.min_protein:
                 missed.append(f"{protein:g}g protein (below your {intent.min_protein:g}g target)")
+            if intent.min_fat is not None and fat < intent.min_fat:
+                missed.append(f"{fat:g}g fat (below your {intent.min_fat:g}g target)")
             head = "Closest option — " + "; ".join(missed) if missed else "Closest available option"
-            return f"{head} • {protein:g}g protein • {carbs:g}g carbs • {calories} cal"
+            # State each number exactly once
+            tail = []
+            if not any('protein' in m for m in missed):
+                tail.append(f"{protein:g}g protein")
+            if not any('carbs' in m for m in missed):
+                tail.append(f"{carbs:g}g carbs")
+            if not any('cal (' in m for m in missed):
+                tail.append(f"{calories} cal")
+            return f"{head} • {' • '.join(tail)}" if tail else head
 
         # Calorie-focused queries
         if intent is not None and intent.calorie_limit is not None:
@@ -426,12 +530,18 @@ class ExplanationService:
             else:
                 parts.append(f"{protein:g}g protein")
 
-        # Carb focused — "only" is earned, never automatic
+        # Carb focused — enforcement must be VISIBLE, and "only" is earned
         if intent is not None and intent.max_carbs is not None:
             if carbs <= KETO_MAX_CARBS:
                 parts.append(f"only {carbs:g}g carbs • keto-friendly")
+            elif carbs <= intent.max_carbs:
+                parts.append(f"{carbs:g}g carbs — fits your low-carb target")
             else:
                 parts.append(f"{carbs:g}g carbs")
+
+        # Fat floor ("high fat") — say the number so the user knows it counted
+        if intent is not None and intent.min_fat is not None:
+            parts.append(f"{fat:g}g fat")
 
         if 'calor' in query_lower and not parts:
             parts.append(f"{calories} calories")

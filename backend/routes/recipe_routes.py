@@ -270,6 +270,14 @@ def create_recipe_router(
         Optional narrowing: restaurant_name (fuzzy, post-filter) and
         source_platform (exact, Pinecone metadata filter).
         """
+        if query.source_platform:
+            known = db_service.get_platform_counts()
+            if query.source_platform not in known:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown source_platform '{query.source_platform}'. "
+                           f"Available: {sorted(known)}"
+                )
         if enhanced_search:
             results = enhanced_search.search(
                 query.query,

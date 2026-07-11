@@ -45,12 +45,15 @@ function cleanRestaurantName(name) {
 
 /**
  * Build the search term a user would paste into the platform's search box.
- * Piece counts and em-dash separators are stripped so platform search can
- * actually resolve it: "10 pc Classic Wings — Lemon Pepper" -> "Classic Wings Lemon Pepper".
+ * Piece counts, parenthetical annotations, and em-dash separators are stripped
+ * so platform search can actually resolve it:
+ * "10 pc Classic Wings — Lemon Pepper" -> "Classic Wings Lemon Pepper"
+ * "Bunless Bacon Cheeseburger (Bowl)"  -> "Bunless Bacon Cheeseburger"
  */
 export function buildSearchTerm(recipe) {
   const dish = (recipe.name || "")
     .replace(/^\d+\s*(?:pc|pcs|piece|pieces|ct)\b\.?\s*/i, "")
+    .replace(/\s*\([^)]*\)\s*$/, "")
     .replace(/\s+[—–-]{1,2}\s+/g, " ")
     .trim();
   return [dish, cleanRestaurantName(recipe.restaurant_name)]

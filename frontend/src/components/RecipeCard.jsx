@@ -1,4 +1,4 @@
-import { Copy, ExternalLink, Sparkles } from "lucide-react";
+import { Check, Copy, ExternalLink, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,6 @@ export const RecipeCard = ({ result, index }) => {
   const isFallback = meets_constraints === false;
 
   const displayPrice = formatPrice(recipe);
-  const matchPct = Math.round(match_score * 100);
   const { url, searchTerm, platformLabel, badgeClass, copyable } = buildOrderLink(recipe);
 
   const copySearchTerm = async () => {
@@ -32,21 +31,17 @@ export const RecipeCard = ({ result, index }) => {
           <div className="flex-1 min-w-0">
             {/* Badges row */}
             <div className="flex flex-wrap items-center gap-2 mb-2">
+              {/* Raw cosine similarity was never a probability — a green check
+                  ("this fits") is honest; a "43% Match" on a perfect result
+                  reads as a coin flip. */}
               {isFallback ? (
                 <Badge className="font-bold text-xs bg-amber-100 text-amber-700">
                   Closest match
                 </Badge>
               ) : (
-                <Badge
-                  className={`font-bold text-xs ${
-                    matchPct >= 55
-                      ? "bg-green-600 text-white"
-                      : matchPct >= 40
-                      ? "bg-green-100 text-green-700"
-                      : "bg-gray-100 text-gray-600"
-                  }`}
-                >
-                  {matchPct}% Match
+                <Badge className="font-bold text-xs bg-green-600 text-white">
+                  <Check className="w-3 h-3 mr-1" />
+                  Fits your search
                 </Badge>
               )}
               <Badge className={`text-xs border-0 ${badgeClass}`}>{platformLabel}</Badge>
@@ -95,10 +90,13 @@ export const RecipeCard = ({ result, index }) => {
         </div>
 
         {/* Macro tiles */}
-        <div className="grid grid-cols-3 gap-2">
-          <MacroTile value={recipe.estimated_protein} unit="g" label="Protein" color="blue" />
-          <MacroTile value={recipe.estimated_carbs}   unit="g" label="Carbs"   color="amber" />
-          <MacroTile value={recipe.estimated_fat}     unit="g" label="Fat"     color="pink" />
+        <div>
+          <div className="grid grid-cols-3 gap-2">
+            <MacroTile value={recipe.estimated_protein} unit="g" label="Protein" color="blue" />
+            <MacroTile value={recipe.estimated_carbs}   unit="g" label="Carbs"   color="amber" />
+            <MacroTile value={recipe.estimated_fat}     unit="g" label="Fat"     color="pink" />
+          </div>
+          <p className="text-[10px] text-gray-400 text-right mt-1">AI-estimated nutrition</p>
         </div>
 
         {/* Order CTA: deep link > copy fallback > honest "coming soon" for

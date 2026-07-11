@@ -16,6 +16,15 @@ describe("buildSearchTerm", () => {
   test("dish-only term when restaurant is missing", () => {
     expect(buildSearchTerm({ name: "Keto Bowl" })).toBe("Keto Bowl");
   });
+
+  test("strips trailing parenthetical annotations from dish names", () => {
+    expect(
+      buildSearchTerm({ name: "Bunless Bacon Cheeseburger (Bowl)", restaurant_name: "Five Guys" })
+    ).toBe("Bunless Bacon Cheeseburger Five Guys");
+    expect(
+      buildSearchTerm({ name: "Grilled Nuggets (12 ct)", restaurant_name: "Chick-fil-A" })
+    ).toBe("Grilled Nuggets Chick-fil-A");
+  });
 });
 
 describe("buildOrderLink", () => {
