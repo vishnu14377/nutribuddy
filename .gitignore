@@ -85,3 +85,7 @@ android-sdk/
 
 # SQLite databases (seed JSONs are tracked instead)
 backend/data/*.db
+!*.env.example
+!.env.example
+# consolidated local credentials (never commit)
+local-credentials.md
