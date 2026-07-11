@@ -47,7 +47,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(create_recipe_router(db_service, vector_service, openai_api_key=openai_api_key))
+app.include_router(create_recipe_router(
+    db_service,
+    vector_service,
+    openai_api_key=openai_api_key,
+    default_currency=os.environ.get('DEFAULT_CURRENCY') or None,
+))
 
 
 @app.get("/health")

@@ -28,16 +28,21 @@ class EnhancedAISearchService:
         query: str,
         top_k: int = 10,
         restaurant_filter: Optional[str] = None,
+        platform_filter: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """Perform fast search with nutritional filtering (NO slow GPT calls)."""
         log_suffix = f" [restaurant={restaurant_filter}]" if restaurant_filter else ""
+        if platform_filter:
+            log_suffix += f" [platform={platform_filter}]"
         logger.info(f"Fast search for: '{query}'{log_suffix}")
-        
+
         # Boost semantic relevance by including restaurant name in the query
         search_query = f"{query} at {restaurant_filter}" if restaurant_filter else query
 
-        # Step 1: Vector search (uses pre-computed embeddings, fast)
-        vector_results = self.vector_service.search(search_query, top_k=50)
+        # Step 1: Vector search (uses pre-computed embeddings, fast).
+        # Platform narrowing happens at the Pinecone level via metadata filter.
+        filters = {'platform': platform_filter} if platform_filter else None
+        vector_results = self.vector_service.search(search_query, top_k=50, filters=filters)
         logger.info(f"Vector search returned {len(vector_results)} candidates")
         
         if not vector_results:

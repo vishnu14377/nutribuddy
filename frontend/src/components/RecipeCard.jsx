@@ -1,17 +1,28 @@
-import { Sparkles } from "lucide-react";
+import { Copy, ExternalLink, Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatPrice } from "@/lib/formatPrice";
+import { buildOrderLink } from "@/lib/orderLink";
 
 export const RecipeCard = ({ result, index }) => {
   const { recipe, match_score, match_explanation } = result;
 
-  const displayPrice =
-    recipe.price > 0
-      ? (recipe.price / 100).toFixed(2)  // prices stored in cents from ingestion
-      : null;
-
+  const displayPrice = formatPrice(recipe);
   const matchPct = Math.round(match_score * 100);
+  const { url, searchTerm, platformLabel, badgeClass } = buildOrderLink(recipe);
+
+  const copySearchTerm = async () => {
+    try {
+      await navigator.clipboard.writeText(searchTerm);
+      toast.success(`Copied — paste into ${platformLabel}`);
+    } catch {
+      // Clipboard API unavailable (non-secure context / in-app browser):
+      // show the term itself so the user can still act on it.
+      toast.info(`Search for: ${searchTerm}`);
+    }
+  };
 
   return (
     <Card className="overflow-hidden hover:shadow-md border border-gray-100 hover:border-green-400 transition-all bg-white">
@@ -31,6 +42,7 @@ export const RecipeCard = ({ result, index }) => {
               >
                 {matchPct}% Match
               </Badge>
+              <Badge className={`text-xs border-0 ${badgeClass}`}>{platformLabel}</Badge>
               {recipe.restaurant_name && (
                 <Badge variant="outline" className="text-xs truncate max-w-[160px]">
                   {recipe.restaurant_name}
@@ -62,7 +74,7 @@ export const RecipeCard = ({ result, index }) => {
             </div>
             <div className="text-xs text-gray-400 mb-2">cal</div>
             {displayPrice && (
-              <div className="text-base font-bold text-green-600">${displayPrice}</div>
+              <div className="text-base font-bold text-green-600">{displayPrice}</div>
             )}
           </div>
         </div>
@@ -82,9 +94,32 @@ export const RecipeCard = ({ result, index }) => {
           <MacroTile value={recipe.estimated_fat}     unit="g" label="Fat"     color="pink" />
         </div>
 
-        <Button className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
-          Order Now
-        </Button>
+        {/* Order CTA: web deep link when the platform has one, copy fallback otherwise */}
+        {url ? (
+          <Button asChild className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              Order on {platformLabel}
+            </a>
+          </Button>
+        ) : (
+          <Button
+            onClick={copySearchTerm}
+            disabled={!searchTerm}
+            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg"
+          >
+            <Copy className="w-4 h-4 mr-2" />
+            Copy search for {platformLabel}
+          </Button>
+        )}
+        {url && (
+          <button
+            onClick={copySearchTerm}
+            className="w-full text-center text-xs text-gray-400 hover:text-green-600 transition-colors -mt-2"
+          >
+            or copy search term
+          </button>
+        )}
       </CardContent>
     </Card>
   );

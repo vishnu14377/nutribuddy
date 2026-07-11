@@ -9,8 +9,46 @@ logger = logging.getLogger(__name__)
 
 
 class DataIngestionService:
-    """Service for extracting and processing menu items from Uber Eats data."""
-    
+    """Service for extracting and processing menu items from Uber Eats data.
+
+    Price contract: this adapter emits MAJOR currency units (12.99 == $12.99)
+    with currency stamped explicitly ('USD' for the Apify Uber Eats export).
+    Per-source explicit unit config replaces magnitude guessing — a genuine
+    $101 catering platter no longer gets mangled by a >100 heuristic.
+    """
+
+    # The Apify Uber Eats actor exports numeric prices in MINOR units (cents:
+    # 2069.0 == $20.69, verified against the priceTagline column). String
+    # prices like "$12.99" are already major units.
+    SOURCE_CURRENCY = 'USD'
+    SOURCE_PLATFORM = 'ubereats'
+
+    @staticmethod
+    def _normalize_price(price_raw, numeric_unit: str = 'minor') -> float:
+        """Normalize a raw source price to major currency units.
+
+        Args:
+            price_raw: Raw value from the source (float cents, or '$12.99' string)
+            numeric_unit: 'minor' if numeric values are cents, 'major' if dollars
+
+        Returns:
+            Price in major units rounded to 2dp; 0.0 when missing/unparseable
+        """
+        try:
+            if isinstance(price_raw, str):
+                cleaned = price_raw.replace('$', '').replace(',', '').strip()
+                if not cleaned or cleaned == 'nan':
+                    return 0.0
+                return round(float(cleaned), 2)
+            if price_raw is None or str(price_raw) == 'nan':
+                return 0.0
+            value = float(price_raw)
+            if numeric_unit == 'minor':
+                value = value / 100
+            return round(value, 2)
+        except (ValueError, TypeError):
+            return 0.0
+
     @staticmethod
     def extract_menu_items_from_excel(file_path: str, limit: int = 500) -> List[Dict[str, Any]]:
         """Extract individual menu items from Uber Eats Excel export.
@@ -87,41 +125,46 @@ class DataIngestionService:
         return ', '.join(cuisines) if cuisines else 'Various'
     
     @staticmethod
+    def _is_orderable(row, prefix: str) -> bool:
+        """Skip items the platform marks sold out / unavailable."""
+        sold_out = row.get(f'{prefix}/isSoldOut')
+        available = row.get(f'{prefix}/isAvailable')
+        if sold_out is True or str(sold_out) == 'True':
+            return False
+        if available is False or str(available) == 'False':
+            return False
+        return True
+
+    @staticmethod
     def _extract_item(row, idx: int, prefix: str, restaurant_name: str, cuisine: str, logo_url: str) -> Dict[str, Any]:
         """Extract a featured item from a row."""
         try:
             title = str(row.get(f'{prefix}/{idx}/title', ''))
             if not title or title == 'nan':
                 return None
+            if not DataIngestionService._is_orderable(row, f'{prefix}/{idx}'):
+                return None
             
             description = str(row.get(f'{prefix}/{idx}/itemDescription', ''))
             if description == 'nan':
                 description = ''
             
-            price_raw = row.get(f'{prefix}/{idx}/price', 0)
-            try:
-                if isinstance(price_raw, str):
-                    price = float(price_raw.replace('$', '').replace(',', ''))
-                else:
-                    price = float(price_raw) if price_raw and str(price_raw) != 'nan' else 0
-                # If price > 100, it's likely in cents - convert to dollars
-                if price > 100:
-                    price = price / 100
-            except:
-                price = 0
-            
+            price = DataIngestionService._normalize_price(
+                row.get(f'{prefix}/{idx}/price', 0), numeric_unit='minor'
+            )
+
             image_url = str(row.get(f'{prefix}/{idx}/imageUrl', ''))
             if image_url == 'nan':
                 image_url = logo_url if logo_url != 'nan' else ''
-            
+
             rating = row.get(f'{prefix}/{idx}/rating', 0)
             try:
                 rating = float(rating) if rating and str(rating) != 'nan' else 0
             except:
                 rating = 0
-            
+
             item_uuid = str(row.get(f'{prefix}/{idx}/uuid', ''))
-            
+
             return {
                 'id': str(uuid.uuid4()),
                 'name': title[:200],
@@ -130,6 +173,8 @@ class DataIngestionService:
                 'cuisine_type': cuisine[:50],
                 'image_url': image_url,
                 'price': price,
+                'currency': DataIngestionService.SOURCE_CURRENCY,
+                'source_platform': DataIngestionService.SOURCE_PLATFORM,
                 'rating': rating,
                 'uber_uuid': item_uuid if item_uuid != 'nan' else '',
                 'spice_level': 'Medium'
@@ -143,36 +188,33 @@ class DataIngestionService:
         """Extract a catalog menu item from a row."""
         try:
             prefix = f'menu/{menu_idx}/catalogItems/{item_idx}'
-            
+
             title = str(row.get(f'{prefix}/title', ''))
             if not title or title == 'nan':
+                return None
+            if not DataIngestionService._is_orderable(row, prefix):
                 return None
             
             description = str(row.get(f'{prefix}/itemDescription', ''))
             if description == 'nan':
                 description = ''
             
-            price_raw = row.get(f'{prefix}/price', 0)
-            try:
-                if isinstance(price_raw, str):
-                    price = float(price_raw.replace('$', '').replace(',', ''))
-                else:
-                    price = float(price_raw) if price_raw and str(price_raw) != 'nan' else 0
-            except:
-                price = 0
-            
+            price = DataIngestionService._normalize_price(
+                row.get(f'{prefix}/price', 0), numeric_unit='minor'
+            )
+
             image_url = str(row.get(f'{prefix}/imageUrl', ''))
             if image_url == 'nan':
                 image_url = logo_url if logo_url != 'nan' else ''
-            
+
             rating = row.get(f'{prefix}/rating', 0)
             try:
                 rating = float(rating) if rating and str(rating) != 'nan' else 0
             except:
                 rating = 0
-            
+
             item_uuid = str(row.get(f'{prefix}/uuid', ''))
-            
+
             return {
                 'id': str(uuid.uuid4()),
                 'name': title[:200],
@@ -181,6 +223,8 @@ class DataIngestionService:
                 'cuisine_type': cuisine[:50],
                 'image_url': image_url,
                 'price': price,
+                'currency': DataIngestionService.SOURCE_CURRENCY,
+                'source_platform': DataIngestionService.SOURCE_PLATFORM,
                 'rating': rating,
                 'uber_uuid': item_uuid if item_uuid != 'nan' else '',
                 'spice_level': 'Medium'

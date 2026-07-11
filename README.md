@@ -1,171 +1,125 @@
-# Uber Eats AI Search
+# Nutribuddy AI
 
-AI-powered food discovery platform with Uber Eats theme. Search for meals using natural language and get personalized recommendations based on your dietary goals.
+One search, every delivery app. Users prompt their nutrition goals in natural
+language ("high protein low carb", "under 400 cal") and Nutribuddy's AI finds
+the exact dishes across delivery platforms (Uber Eats, DoorDash, partner
+catalogs), then hands off to the platform to order.
 
 ## 🚀 Quick Start
 
-### VS Code (Recommended)
+### Backend
 
-1. Open the project in VS Code
-2. Install recommended extensions (VS Code will prompt you)
-3. Run **Full Stack: Start All** task (`Ctrl+Shift+B`)
-4. Open http://localhost:3000
-
-### Manual Setup
-
-#### Backend
 ```bash
 cd backend
-pip install -r requirements.txt
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt          # runtime deps
+pip install -r requirements-dev.txt      # pytest + httpx (tests)
+cp .env.example .env                     # fill in your API keys
+python scripts/seed_fixtures.py          # load Uber Eats + DoorDash + BiteRush catalogs
 uvicorn server:app --reload --host 0.0.0.0 --port 8001
 ```
 
-#### Frontend
+### Frontend
+
 ```bash
 cd frontend
 yarn install
-yarn start
+cp .env.example .env
+yarn start                               # http://localhost:3000
 ```
 
-## 🗄️ Database
+## 🏗️ Architecture
 
-This app uses **SQLite** for simplicity and portability. The database file is stored at:
 ```
-backend/data/ubereats.db
-```
+fixtures / Apify exports ──connectors──▶ normalize (price, currency, platform)
+                                            │
+                              GPT-4o nutrition estimation (ingest-time only)
+                                            │
+                          SQLite (source of truth) + Pinecone (vectors)
 
-### Database Schema
-
-```sql
-CREATE TABLE recipes (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    ingredients TEXT NOT NULL,  -- JSON array
-    cooking_method TEXT,
-    cuisine_type TEXT,
-    cooking_time TEXT,
-    spice_level TEXT,
-    dietary_tags TEXT,          -- JSON array
-    estimated_calories INTEGER,
-    estimated_protein REAL,
-    estimated_carbs REAL,
-    estimated_fat REAL,
-    description TEXT,
-    image_url TEXT,
-    restaurant_name TEXT,
-    delivery_time TEXT,
-    rating REAL,
-    price REAL
-);
+user query ─▶ /api/search ─▶ embed query ─▶ Pinecone top-50 (platform filter)
+           ─▶ local nutrition filters (protein/carb/calorie, no LLM)
+           ─▶ SQLite batch fetch ─▶ ranked results + rule-based explanations
 ```
 
-## 🛠️ Tech Stack
-
-### Backend
-- **Framework**: FastAPI
-- **Database**: SQLite (lightweight, file-based)
-- **Vector DB**: Pinecone (semantic search)
-- **AI/ML**: Google Gemini (embeddings)
-- **Language**: Python 3.11+
-
-### Frontend
-- **Framework**: React 19
-- **Styling**: Tailwind CSS (Uber Eats theme)
-- **UI Components**: Shadcn UI
-- **HTTP Client**: Axios
+Search latency stays sub-second because the only network hop at query time is
+one query-embedding call — filtering, ranking, and explanations are all local.
 
 ## 📁 Project Structure
 
 ```
-/app/
-├── .vscode/              # VS Code configuration
-│   ├── launch.json       # Debug configurations
-│   ├── tasks.json        # Build tasks
-│   ├── settings.json     # Editor settings
-│   └── extensions.json   # Recommended extensions
-├── backend/
-│   ├── data/             # SQLite database
-│   ├── models/           # Pydantic models
-│   ├── services/         # Business logic
-│   ├── routes/           # API endpoints
-│   ├── utils/            # Utilities
-│   ├── server.py         # FastAPI app
-│   └── .env              # Environment variables
-├── frontend/
-│   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── pages/        # Page components
-│   │   ├── App.js        # Main app
-│   │   └── index.js      # Entry point
-│   └── package.json
-└── README.md
+backend/
+├── connectors/        # Platform connectors (contract: connectors/base.py)
+│   └── fixture_connector.py   # POC data source; live Apify slots in later
+├── data/fixtures/     # Checked-in normalized catalogs (ubereats, doordash, biterush)
+├── models/            # Pydantic models (Recipe: price=major units + ISO currency)
+├── routes/            # API endpoints
+├── scripts/           # build_fixtures.py, seed_fixtures.py
+├── services/          # search pipeline, SQLite, Pinecone, OpenAI
+├── tests/             # pytest suite (no network needed)
+└── server.py          # FastAPI app
+frontend/
+└── src/
+    ├── components/    # RecipeCard, UpgradeModal, shadcn ui/
+    ├── lib/           # formatPrice, orderLink, searchQuota
+    └── pages/         # HomePage
+docs/
+└── monetization.md    # subscription design note
 ```
 
 ## 🔌 API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/` | Health check |
-| POST | `/api/recipes/upload` | Initialize menu database |
-| POST | `/api/search` | AI-powered recipe search |
-| GET | `/api/recipes` | Get all recipes |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | — | Liveness + DB count |
+| GET | `/api/stats` | — | DB/platform counts + vector store stats |
+| POST | `/api/search` | — | AI search; body: `{query, source_platform?, restaurant_name?}` |
+| GET | `/api/recipes` | — | List items |
+| GET | `/api/recipes/{id}` | — | Get one item |
+| POST | `/api/ingest/items` | admin† | Bulk-ingest normalized items (per-source replace) |
+| POST | `/api/ingest/url` | admin† | Import an Apify Uber Eats Excel export URL |
+| DELETE | `/api/recipes/clear` | admin† | Nuke everything (the only cross-platform wipe) |
 
-### Search Example
+† When `ADMIN_API_TOKEN` is set, these require a matching `X-Admin-Token`
+header; unset = open for local dev.
+
+### Search example
 
 ```bash
 curl -X POST http://localhost:8001/api/search \
   -H "Content-Type: application/json" \
-  -d '{"query": "high protein low carb dinner"}'
+  -d '{"query": "high protein low carb dinner", "source_platform": "ubereats"}'
 ```
 
-## 🎨 Uber Eats Theme
+## 💰 Data Contracts
 
-The app uses Uber Eats brand colors:
-- **Primary Green**: `#06C167`
-- **Black**: `#000000`
-- **White**: `#FFFFFF`
-- **Gray Scale**: Various shades for UI elements
+- **Price**: MAJOR currency units (`12.99` = $12.99), rounded to 2dp at the
+  ingestion boundary. Connectors normalize; nothing downstream converts.
+- **Currency**: ISO 4217 uppercase, stamped explicitly per source — never
+  guessed. Unknown currency renders as a bare number in the UI.
+- **source_platform**: `ubereats | doordash | biterush | manual`. Ingestion
+  replaces per-source: re-pushing one platform's catalog never touches another's.
 
-## 🧪 VS Code Debugging
+## 🧪 Tests
 
-1. Set breakpoints in your code
-2. Press `F5` or use the Debug panel
-3. Select "Python: FastAPI Backend" for backend debugging
-4. Select "Chrome: Frontend" for frontend debugging
-5. Use "Full Stack" compound to debug both simultaneously
+```bash
+cd backend && ./venv/bin/python -m pytest tests/ -q
+```
+
+The suite covers the nutritional filter/ranking logic, calorie-limit parsing,
+price normalization, schema migration, per-source replace semantics, the admin
+guard, and every checked-in fixture's contract. No network required.
 
 ## 📝 Environment Variables
 
-### Backend (.env)
-```env
-DB_PATH=./data/ubereats.db
-GOOGLE_API_KEY=your_google_api_key
-PINECONE_API_KEY=your_pinecone_api_key
-CORS_ORIGINS=*
-```
+See [backend/.env.example](backend/.env.example) and
+[frontend/.env.example](frontend/.env.example) for the full annotated list.
+Required: `OPENAI_API_KEY`, `PINECONE_API_KEY`.
 
-### Frontend (.env)
-```env
-REACT_APP_BACKEND_URL=http://localhost:8001
-```
+## 🗺️ Product Direction
 
-## 📦 VS Code Tasks
-
-Access via `Ctrl+Shift+P` > "Tasks: Run Task":
-
-- **Full Stack: Start All** - Start both servers
-- **Backend: Run Server** - Start FastAPI
-- **Frontend: Start Dev Server** - Start React
-- **Database: Initialize Menu** - Load recipes
-
-## 🙋‍♂️ Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run linting and tests
-5. Submit a pull request
-
-## 📄 License
-
-MIT License
+The standalone multi-platform subscription app is being built POC-first from
+checked-in fixture data (real scraped Uber Eats catalog + contract-shaped
+DoorDash sample) while official Uber Eats / DoorDash developer API applications
+are pending. Monetization is a stubbed free-tier paywall — see
+[docs/monetization.md](docs/monetization.md).

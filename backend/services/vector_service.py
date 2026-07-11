@@ -98,7 +98,7 @@ Nutritional Profile:
 
 Dietary Information: {dietary_info}
 Spice Level: {recipe.spice_level or 'Mild'}
-Price: ${recipe.price or 0:.2f}
+Price: {recipe.currency or ''} {recipe.price or 0:.2f}
 
 Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or ''}, 
 {dietary_info}, {"high protein" if (recipe.estimated_protein or 0) > 25 else ""}, 
@@ -119,7 +119,9 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
             'protein': recipe.estimated_protein or 0,
             'carbs': recipe.estimated_carbs or 0,
             'fat': recipe.estimated_fat or 0,
-            'price': recipe.price or 0
+            'price': recipe.price or 0,
+            'currency': recipe.currency or '',
+            'platform': recipe.source_platform or ''
         }
 
     def store_recipes_batch(self, recipes: List[Recipe], batch_size: int = 50) -> int:
@@ -187,6 +189,8 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
                 filter_dict['protein'] = {'$gte': filters['min_protein']}
             if 'max_carbs' in filters:
                 filter_dict['carbs'] = {'$lte': filters['max_carbs']}
+            if 'platform' in filters:
+                filter_dict['platform'] = {'$eq': filters['platform']}
         
         # Query Pinecone
         results = self.index.query(
@@ -202,6 +206,21 @@ Keywords: {recipe.name}, {recipe.cuisine_type or ''}, {recipe.restaurant_name or
             'metadata': match.get('metadata', {})
         } for match in results['matches']]
     
+    def delete_by_ids(self, ids: List[str]) -> None:
+        """Delete vectors by ID in chunks.
+
+        Pinecone serverless indexes do NOT support metadata-filtered deletes,
+        so per-source replacement must be ID-driven: read the IDs from SQLite
+        (the ID source of truth) first, delete those vectors, then delete the
+        SQLite rows.
+        """
+        for start in range(0, len(ids), 1000):
+            chunk = ids[start:start + 1000]
+            if chunk:
+                self.index.delete(ids=chunk)
+        if ids:
+            logger.info(f"Deleted {len(ids)} vectors from index: {self.index_name}")
+
     def clear_index(self) -> None:
         """Clear all vectors from the index."""
         try:

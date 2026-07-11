@@ -82,3 +82,6 @@ android-sdk/
 # Environment files
 *.env
 *.env.*
+
+# SQLite databases (seed JSONs are tracked instead)
+backend/data/*.db
