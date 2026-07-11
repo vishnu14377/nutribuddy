@@ -31,10 +31,10 @@ export const PLATFORMS = {
   biterush: {
     label: "BiteRush",
     badgeClass: "bg-orange-100 text-orange-700",
-    // Partner platform with no public ordering destination yet: a copy button
-    // pointing nowhere is worse than no button.
-    buildUrl: null,
-    noDestination: true,
+    // First-party app (biterush/ in this monorepo). Per-item /food/<id> deep
+    // links come from the backend order_url; this search URL is the fallback.
+    buildUrl: (term) =>
+      `${process.env.REACT_APP_BITERUSH_URL || "http://localhost:5173"}/search?q=${encodeURIComponent(term)}`,
   },
 };
 

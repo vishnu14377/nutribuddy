@@ -44,13 +44,21 @@ describe("buildOrderLink", () => {
     expect(url).toBe("https://www.doordash.com/search/store/Harvest%20Bowl%20sweetgreen");
   });
 
-  test("biterush has no destination: no url, not copyable", () => {
+  test("biterush is first-party: search deep link into the BiteRush app", () => {
     const { url, copyable, platformLabel } = buildOrderLink({
       name: "Keto Steak & Eggs", restaurant_name: "BiteRush Kitchen", source_platform: "biterush",
     });
-    expect(url).toBeNull();
-    expect(copyable).toBe(false);
+    expect(url).toContain("/search?q=Keto%20Steak");
+    expect(copyable).toBe(true);
     expect(platformLabel).toBe("BiteRush");
+  });
+
+  test("biterush per-item /food/<id> order_url from the backend wins", () => {
+    const { url } = buildOrderLink({
+      name: "Keto Steak & Eggs", source_platform: "biterush",
+      order_url: "http://localhost:5173/food/abc123",
+    });
+    expect(url).toBe("http://localhost:5173/food/abc123");
   });
 
   test("unknown platform is never relabeled as another platform's CTA", () => {

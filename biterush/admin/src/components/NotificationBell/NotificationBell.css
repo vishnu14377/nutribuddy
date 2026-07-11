@@ -1,0 +1,143 @@
+.notification-bell-container {
+  position: relative;
+  cursor: pointer;
+  margin-right: 20px;
+}
+
+.bell-icon-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #f8f9fa;
+  transition: all 0.2s;
+}
+
+.bell-icon-wrapper:hover {
+  background: #f0f1f2;
+}
+
+.bell-icon {
+  width: 22px;
+  opacity: 0.7;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background: #ff4f00;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid white;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: 50px;
+  right: 0;
+  width: 320px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  border: 1px solid #eee;
+  z-index: 1000;
+  overflow: hidden;
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.dropdown-header {
+  padding: 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+}
+
+.dropdown-header h3 {
+  font-size: 16px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.dropdown-header button {
+  background: none;
+  border: none;
+  color: #ff4f00;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.dropdown-header button:hover {
+  background: #fff5f2;
+}
+
+.notification-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.notification-item {
+  padding: 14px 16px;
+  border-bottom: 1px solid #f8f9fa;
+  transition: background 0.2s;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-item:hover {
+  background: #fcfcfc;
+}
+
+.notification-item.unread {
+  background: #fff9f7;
+  border-left: 3px solid #ff4f00;
+}
+
+.notif-title {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1a1a1a;
+  margin-bottom: 4px;
+}
+
+.notif-message {
+  font-size: 13px;
+  color: #666;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.notif-time {
+  font-size: 11px;
+  color: #999;
+}
+
+.no-notifications {
+  padding: 30px;
+  text-align: center;
+  color: #bbb;
+  font-size: 14px;
+}

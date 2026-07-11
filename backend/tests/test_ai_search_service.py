@@ -276,6 +276,7 @@ class FakeDB:
                 'estimated_fat': md['fat'] or None,
                 'price': md['price'] or None,
                 'currency': md['currency'] or None,
+                'source_platform': md.get('platform') or 'biterush',
             }
 
     def get_recipes_by_ids(self, ids):
@@ -378,7 +379,7 @@ class TestSearchBehavior:
 
     def test_unorderable_platform_demoted_at_equal_relevance(self):
         candidates = [
-            make_candidate('Partner Keto Plate', protein=45, carbs=8, score=0.52, platform='biterush'),
+            make_candidate('Partner Keto Plate', protein=45, carbs=8, score=0.52, platform='partnerx'),
             make_candidate('Orderable Keto Bowl', protein=42, carbs=10, score=0.48, platform='ubereats'),
         ]
         results = run_search(candidates, 'keto dinner')
@@ -432,7 +433,7 @@ class TestSearchBehavior:
 
     def test_unorderable_items_capped_and_ranked_below_orderable(self):
         candidates = (
-            [make_candidate(f'Partner {i}', protein=40 + i, carbs=5, score=0.6, platform='biterush', tags='keto-friendly') for i in range(4)]
+            [make_candidate(f'Partner {i}', protein=40 + i, carbs=5, score=0.6, platform='partnerx', tags='keto-friendly') for i in range(4)]
             + [make_candidate('Orderable Keto', protein=40, carbs=8, score=0.4, platform='ubereats')]
         )
         results = run_search(candidates, 'keto dinner')
@@ -482,19 +483,19 @@ class TestSearchBehavior:
     def test_partner_items_labeled_in_explanation(self):
         candidates = [
             make_candidate('Keto Steak & Eggs', protein=52, carbs=6, calories=610,
-                           score=0.6, platform='biterush', tags='keto-friendly'),
+                           score=0.6, platform='partnerx', tags='keto-friendly'),
             make_candidate('Orderable Keto Bowl', protein=42, carbs=8, calories=500,
                            score=0.5, platform='ubereats'),
         ]
         results = run_search(candidates, 'keto dinner')
-        partner = next(r for r in results if r['recipe'].source_platform == 'biterush')
+        partner = next(r for r in results if r['recipe'].source_platform == 'partnerx')
         assert 'partner preview' in partner['match_explanation']
 
     def test_value_query_ranks_by_protein_per_dollar(self):
         candidates = [
             make_candidate('Pricey Protein', protein=50, price=20.0, score=0.6),   # 2.5 g/$
             make_candidate('Value Protein', protein=40, price=8.0, score=0.4),     # 5.0 g/$
-            make_candidate('Unpriced Partner', protein=60, price=349, currency='', score=0.7, platform='biterush'),
+            make_candidate('Unpriced Partner', protein=60, price=349, currency='', score=0.7, platform='partnerx'),
         ]
         results = run_search(candidates, 'cheap high protein meal')
         names = [r['recipe'].name for r in results]

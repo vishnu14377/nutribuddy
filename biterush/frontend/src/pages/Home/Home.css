@@ -1,0 +1,38 @@
+.home-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: -28px 0 56px;
+  position: relative;
+  z-index: 1;
+}
+
+.home-highlight {
+  min-height: 118px;
+  padding: 20px;
+  border: 1px solid #e3ede7;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(18, 28, 34, 0.08);
+}
+
+.home-highlight span {
+  display: block;
+  color: #117864;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.home-highlight p {
+  color: #52605c;
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .home-highlights {
+    grid-template-columns: 1fr;
+    margin: 0 0 42px;
+  }
+}

@@ -27,7 +27,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Grilled%20Chicken%20Power%20Bowl",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -59,7 +59,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Double%20Beef%20Smash%20Burger",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -93,7 +93,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Keto%20Steak%20%26%20Eggs",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -127,7 +127,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Garden%20Greek%20Salad",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -159,7 +159,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Salmon%20Teriyaki%20Plate",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -193,7 +193,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Paneer%20Tikka%20Skewers",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -226,7 +226,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Vegan%20Buddha%20Bowl",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -258,7 +258,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Margherita%20Pizza",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -291,7 +291,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Spicy%20Chicken%20Wings%20%2810%20pc%29",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -324,7 +324,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Avocado%20Toast",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -356,7 +356,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Protein%20Mass%20Gainer%20Shake",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -390,7 +390,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Zucchini%20Noodle%20Primavera",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -422,7 +422,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Pulled%20Pork%20Mac%20%26%20Cheese",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -455,7 +455,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Tofu%20Stir-Fry",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -490,7 +490,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Egg%20White%20Veggie%20Omelette",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -523,7 +523,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Quinoa%20Black%20Bean%20Salad",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -557,7 +557,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Lamb%20Seekh%20Kebab",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"
@@ -591,7 +591,7 @@
     "created_at": "2026-06-02 12:51:53",
     "source_platform": "biterush",
     "currency": "USD",
-    "order_url": null,
+    "order_url": "http://localhost:5173/search?q=Berry%20Greek%20Yogurt%20Parfait",
     "latitude": 38.9096,
     "longitude": -77.0434,
     "postal_code": "20036"

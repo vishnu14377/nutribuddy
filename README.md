@@ -116,6 +116,24 @@ See [backend/.env.example](backend/.env.example) and
 [frontend/.env.example](frontend/.env.example) for the full annotated list.
 Required: `OPENAI_API_KEY`, `PINECONE_API_KEY`.
 
+## 🍱 BiteRush (first-party app, unified in this repo)
+
+[biterush/](biterush/) is our own MERN ordering app (Express+MongoDB on :4000,
+customer frontend on :5173, admin on :5174) — see `biterush/How To Run
+Project.pdf`. Nutribuddy treats it as a fully orderable platform: result cards
+deep-link into the BiteRush app (`/food/<id>` per item after a sync,
+`/search?q=` fallback).
+
+Sync its live catalog into search (BiteRush backend must be running):
+
+```bash
+cd backend && ./venv/bin/python scripts/sync_biterush.py
+```
+
+Secrets: `biterush/backend/.env` is gitignored here; copy from
+`.env.example`. The upstream GitHub repo had real secrets committed — rotate
+the JWT/Mongo/Razorpay credentials.
+
 ## 🗺️ Product Direction
 
 The standalone multi-platform subscription app is being built POC-first from

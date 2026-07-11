@@ -52,8 +52,9 @@ MEAT_WORDS_RE = re.compile(
 
 # Platforms with a working order handoff. Items from other sources rank in a
 # lower tier and are capped per page — a Top Pick the user cannot buy breaks
-# the product's core promise.
-ORDERABLE_PLATFORMS = {'ubereats', 'doordash'}
+# the product's core promise. biterush is first-party (the BiteRush app lives
+# in biterush/ in this monorepo) and hands off via /food/<id> deep links.
+ORDERABLE_PLATFORMS = {'ubereats', 'doordash', 'biterush'}
 
 
 def _is_orderable(candidate: Dict) -> bool:
