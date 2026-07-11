@@ -23,6 +23,12 @@ logger = logging.getLogger(__name__)
 # Below this cosine similarity, results are noise — better an honest empty
 # state than a page of 17%-match filler (scores in practice top out ~0.62).
 RELEVANCE_FLOOR = 0.25
+# Between the floors, an item may still be worth showing but must NOT carry
+# the green "fits" badge — soup is not a verified match for "dessert".
+SOFT_RELEVANCE_FLOOR = 0.30
+# At most this many un-orderable partner items per result page, always ranked
+# below orderable matches.
+MAX_UNORDERABLE_RESULTS = 2
 
 # Items above this are almost certainly multi-serving (family meals, whole
 # catering trays) and are excluded from single-meal nutrition queries.
@@ -37,14 +43,16 @@ MEAT_WORDS_RE = re.compile(
     r'chicken|beef|steak|lamb|pork|bacon|ham\b|turkey|salmon|tuna|shrimp|prawn|'
     r'fish|crab|gyro|kofta|meatball|pepperoni|sausage|chorizo|brisket|ribs?\b|'
     r'wings?\b|carnitas|pastrami|prosciutto|anchov|nuggets?\b|duck|veal|lobster|'
-    r'calamari|squid|oysters?\b|clams?\b|scallops?\b', re.IGNORECASE
+    r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b', re.IGNORECASE
+    # 'burger' counts as meat: real veggie burgers carry a vegetarian tag,
+    # which is checked BEFORE this regex — an untagged ShackBurger must never
+    # reach vegetarian results, even amber-flagged.
 )
 
-# Platforms with a working order handoff. Items from other sources are valid
-# results but get a small ranking demotion so orderable dishes win ties —
-# a Top Pick the user cannot buy breaks the product's core promise.
+# Platforms with a working order handoff. Items from other sources rank in a
+# lower tier and are capped per page — a Top Pick the user cannot buy breaks
+# the product's core promise.
 ORDERABLE_PLATFORMS = {'ubereats', 'doordash'}
-UNORDERABLE_SCORE_PENALTY = 0.08
 
 PROTEIN_TERMS = (
     'high protein', 'protein rich', 'protein-rich', 'high-protein',
@@ -59,6 +67,12 @@ STRICT_KETO_TERMS = ('keto',)
 NO_BREAD_TERMS = ('bunless', 'no bun', 'no bread', 'lettuce wrap', 'without bun', 'without bread')
 VEGETARIAN_TERMS = ('vegetarian', 'meatless', 'plant based', 'plant-based', 'no meat', 'veggie', 'vegetariano')
 VEGAN_TERMS = ('vegan', 'vegano')
+# Naming an unambiguously vegetarian dish implies the dietary constraint —
+# 'paneer butter masala' must never return a gyro bowl.
+VEGETARIAN_DISH_TERMS = (
+    'paneer', 'tofu', 'tempeh', 'seitan', 'falafel', 'dal ', 'daal', 'chana',
+    'saag', 'halloumi', 'aloo gobi', 'palak',
+)
 LOW_CAL_INTENT_TERMS = ('low cal', 'low-cal', 'light', 'diet', 'healthy')
 HIGH_FAT_TERMS = ('high fat', 'high-fat', 'alta en grasa')
 VALUE_TERMS = ('cheap', 'budget', 'best value', 'affordable', 'value for money', 'good value')
@@ -89,6 +103,8 @@ class QueryIntent:
     vegan: bool = False
     value_seek: bool = False   # "cheap" / "best value" — rank by value among USD-priced items
     impossible: bool = False   # e.g. "under 0 calories"
+    excluded_terms: tuple = () # "no rice" / "without mayo" — hard name/description exclusions
+    cleaned_query: str = ''    # query with exclusion phrases stripped, for embedding
 
     def has_nutrition_constraint(self) -> bool:
         return any(v is not None for v in (
@@ -125,15 +141,73 @@ class QueryIntent:
         return labels
 
 
+_NUMBER_UNITS = {
+    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7,
+    'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12, 'thirteen': 13,
+    'fourteen': 14, 'fifteen': 15, 'sixteen': 16, 'seventeen': 17, 'eighteen': 18,
+    'nineteen': 19,
+}
+_NUMBER_TENS = {
+    'twenty': 20, 'thirty': 30, 'forty': 40, 'fifty': 50, 'sixty': 60,
+    'seventy': 70, 'eighty': 80, 'ninety': 90,
+}
+
+# Excluded-food candidates that dedicated intents already handle better.
+_EXCLUSION_SKIP = {'meat', 'carb', 'carbs', 'bread', 'bun', 'buns'}
+
+_EXCLUSION_RE = re.compile(r'\b(?:no|without)\s+([a-z]+)')
+
+
+def _normalize_number_words(text: str) -> str:
+    """'six hundred calories' -> '600 calories'; 'forty grams' -> '40 grams'."""
+    tens_pat = '|'.join(_NUMBER_TENS)
+    units_pat = '|'.join(_NUMBER_UNITS)
+
+    def hundreds(m):
+        value = _NUMBER_UNITS[m.group(1)] * 100
+        if m.group(2):
+            value += _NUMBER_TENS.get(m.group(2), _NUMBER_UNITS.get(m.group(2), 0))
+        if m.group(3):
+            value += _NUMBER_UNITS.get(m.group(3), 0)
+        return str(value)
+
+    text = re.sub(
+        rf'\b({units_pat})\s+hundred(?:\s+and)?(?:\s+({tens_pat}|{units_pat}))?(?:[\s-]({units_pat}))?\b',
+        hundreds, text)
+    text = re.sub(
+        rf'\b({tens_pat})[\s-]({units_pat})\b',
+        lambda m: str(_NUMBER_TENS[m.group(1)] + _NUMBER_UNITS[m.group(2)]), text)
+    text = re.sub(rf'\b({tens_pat})\b', lambda m: str(_NUMBER_TENS[m.group(1)]), text)
+    text = re.sub(rf'\b({units_pat})\b(?=\s*(?:hundred|k?cal|calorie|gram|g\b|dollar|buck))',
+                  lambda m: str(_NUMBER_UNITS[m.group(1)]), text)
+    return text
+
+
 def parse_intent(query: str) -> QueryIntent:
     """Parse nutrition/price constraints from a plain-English query.
 
     Extraction order matters: gram-level macro limits and dollar limits are
     matched and REMOVED from the working string first, so the bare calorie
     pattern ("under 400") can never swallow "under 15g carbs" or "under $12".
+    Spelled-out numbers are normalized first ("six hundred calories" == "600
+    calories") — silently ignoring them while green-badging violators was a
+    round-3 trust failure.
     """
     intent = QueryIntent()
-    work = query.lower()
+    work = _normalize_number_words(query.lower())
+
+    # Exclusions ("no rice", "without mayo") become hard filters AND are
+    # stripped from the embedding text — otherwise "no rice" pulls rice bowls
+    # CLOSER in embedding space.
+    excluded = []
+    cleaned = query
+    for m in _EXCLUSION_RE.finditer(work):
+        term = m.group(1)
+        if term not in _EXCLUSION_SKIP and len(term) > 2:
+            excluded.append(term)
+            cleaned = re.sub(rf'\b(?:no|without)\s+{term}\b', ' ', cleaned, flags=re.IGNORECASE)
+    intent.excluded_terms = tuple(excluded)
+    intent.cleaned_query = ' '.join(cleaned.split())
 
     # 1. Gram-level macro limits: "under 15g carbs", "max 20 grams of fat"
     def take(pattern, handler):
@@ -207,11 +281,12 @@ def parse_intent(query: str) -> QueryIntent:
     if intent.min_fat is None and any(t in work for t in HIGH_FAT_TERMS):
         intent.min_fat = DEFAULT_MIN_FAT
 
-    # 6. Dietary intents
+    # 6. Dietary intents — explicit keywords, or naming an unambiguously
+    # vegetarian dish (paneer, tofu, falafel...)
     if any(t in work for t in VEGAN_TERMS):
         intent.vegan = True
         intent.vegetarian = True
-    elif any(t in work for t in VEGETARIAN_TERMS):
+    elif any(t in work for t in VEGETARIAN_TERMS) or any(t in work for t in VEGETARIAN_DISH_TERMS):
         intent.vegetarian = True
 
     # 7. Value seeking
@@ -257,8 +332,10 @@ class EnhancedAISearchService:
             logger.info("Impossible constraint (e.g. under 0 cal) — honest empty result")
             return []
 
-        # Boost semantic relevance by including restaurant name in the query
-        search_query = f"{query} at {restaurant_filter}" if restaurant_filter else query
+        # Embed the exclusion-stripped query ("no rice" must not pull rice
+        # bowls closer); boost relevance with the restaurant name if given.
+        embed_query = intent.cleaned_query or query
+        search_query = f"{embed_query} at {restaurant_filter}" if restaurant_filter else embed_query
 
         # Wider candidate pool when constraints will thin it out
         pool_size = 75 if intent.has_any_constraint() else 50
@@ -301,66 +378,109 @@ class EnhancedAISearchService:
 
         qualified = [c for c in pool if self._passes(c, intent)]
 
+        # Each entry is (candidate, base_meets). Ranking rules:
+        # - qualified: orderable items first (a Top Pick the user can't buy
+        #   breaks the promise), vector score within tiers, at most
+        #   MAX_UNORDERABLE_RESULTS partner items per page
+        # - thin results (<3): append labeled near-misses instead of a cliff
+        # - full fallback: closest-first ordering, never re-sorted by score
         if qualified:
-            results, meets = qualified, True
-        elif intent.has_any_constraint():
-            results, meets = self._closest_fallback(pool, intent), False
-            logger.info(f"No items satisfy {intent.constraint_labels()} — returning {len(results)} closest, flagged")
-        else:
-            results, meets = pool, True
-
-        if meets:
-            # Constraints filter; vector relevance ranks — with a small demotion
-            # for items the user cannot actually order.
             if intent.value_seek:
-                results = self._rank_by_value(results, intent)
+                ranked = [(c, True) for c in self._rank_by_value(qualified, intent)]
             else:
-                results = sorted(results, key=self._rank_key, reverse=True)
-        # Fallback results keep their closest-first ordering — re-sorting by
-        # score would bury the item that misses the constraint least.
+                ranked = [(c, True) for c in self._rank_and_cap(qualified)]
+            # Thin result sets get labeled near-misses instead of a cliff —
+            # except value queries, where an unpriced near-miss is pure noise.
+            if len(qualified) < 3 and intent.has_any_constraint() and not intent.value_seek:
+                qualified_ids = {c['id'] for c in qualified}
+                extras = self._closest_fallback(
+                    [c for c in pool if c['id'] not in qualified_ids], intent)
+                ranked += [(c, False) for c in extras[:3]]
+        elif intent.has_any_constraint():
+            ranked = [(c, False) for c in self._closest_fallback(pool, intent)]
+            logger.info(f"No items satisfy {intent.constraint_labels()} — returning {len(ranked)} closest, flagged")
+        else:
+            ranked = [(c, True) for c in self._rank_and_cap(pool)]
 
         # Dedup + batch fetch (avoids N+1 queries)
         top_results = []
         seen_ids = set()
-        for result in results[:top_k]:
+        for result, base_meets in ranked[:top_k]:
             if result['id'] not in seen_ids:
                 seen_ids.add(result['id'])
-                top_results.append(result)
+                top_results.append((result, base_meets))
 
-        recipe_docs = self.db_service.get_recipes_by_ids([r['id'] for r in top_results])
+        recipe_docs = self.db_service.get_recipes_by_ids([r['id'] for r, _ in top_results])
         recipes_dict = {doc['id']: doc for doc in recipe_docs}
 
         final_results = []
-        for result in top_results:
+        for result, base_meets in top_results:
             recipe_doc = recipes_dict.get(result['id'])
-            if recipe_doc:
-                recipe = Recipe(**recipe_doc)
-                # Belt-and-suspenders diet safety: metadata descriptions are
-                # truncated, so re-verify against the full stored description.
-                if (intent.vegetarian or intent.vegan):
-                    tags = ' '.join(recipe.dietary_tags or []).lower()
-                    tagged = ('vegan' in tags) if intent.vegan else ('vegetarian' in tags or 'vegan' in tags)
-                    if not tagged and (intent.vegan or MEAT_WORDS_RE.search(f"{recipe.name} {recipe.description or ''}")):
+            if not recipe_doc:
+                continue
+            recipe = Recipe(**recipe_doc)
+            item_meets = base_meets
+            unverified_diet = False
+
+            # Belt-and-suspenders diet safety: metadata descriptions are
+            # truncated, so re-verify against the full stored description.
+            if intent.vegetarian or intent.vegan:
+                tags = ' '.join(recipe.dietary_tags or []).lower()
+                tagged = ('vegan' in tags) if intent.vegan else ('vegetarian' in tags or 'vegan' in tags)
+                if not tagged:
+                    if intent.vegan or MEAT_WORDS_RE.search(f"{recipe.name} {recipe.description or ''}"):
                         logger.warning(f"Diet-safety drop: {recipe.name} (untagged, meat words in description)")
                         continue
-                final_results.append({
-                    'recipe': recipe,
-                    'match_score': result['score'],
-                    'match_explanation': ExplanationService.generate_explanation(
-                        query, recipe, intent=intent, meets_constraints=meets
-                    ),
-                    'meets_constraints': meets,
-                })
+                    # No meat words, but no positive tag either — never assert
+                    # a verified dietary match on absence of evidence.
+                    item_meets = False
+                    unverified_diet = True
 
-        logger.info(f"Returning {len(final_results)} results (meets_constraints={meets})")
+            # Excluded terms re-verified against the full description
+            if intent.excluded_terms:
+                haystack = f"{recipe.name} {recipe.description or ''}".lower()
+                if any(term in haystack for term in intent.excluded_terms):
+                    logger.info(f"Exclusion drop: {recipe.name} (contains excluded term)")
+                    continue
+
+            # Low semantic relevance never earns the green badge — soup is not
+            # a verified match for "dessert" just because macros are fine.
+            if item_meets and result['score'] < SOFT_RELEVANCE_FLOOR:
+                item_meets = False
+
+            explanation = ExplanationService.generate_explanation(
+                query, recipe, intent=intent, meets_constraints=item_meets
+            )
+            if unverified_diet:
+                diet_word = 'vegan' if intent.vegan else 'vegetarian'
+                explanation = f"{diet_word.capitalize()} status unverified (no meat listed) • {explanation}"
+
+            final_results.append({
+                'recipe': recipe,
+                'match_score': result['score'],
+                'match_explanation': explanation,
+                'meets_constraints': item_meets,
+            })
+
+        logger.info(f"Returning {len(final_results)} results")
         return final_results
 
     @staticmethod
-    def _rank_key(candidate: Dict) -> float:
-        """Vector score, minus a small demotion for un-orderable sources."""
-        platform = candidate.get('metadata', {}).get('platform', '') or ''
-        penalty = 0 if platform in ORDERABLE_PLATFORMS else UNORDERABLE_SCORE_PENALTY
-        return candidate['score'] - penalty
+    def _rank_and_cap(candidates: List[Dict], page_size: int = 10) -> List[Dict]:
+        """Orderable items first (vector score within the tier), with up to
+        MAX_UNORDERABLE_RESULTS partner items guaranteed slots at the END of
+        the first page — capped so they can't hog the top, but on the page so
+        the best partner match (often the best overall match) stays findable."""
+        def is_orderable(c):
+            return (c.get('metadata', {}).get('platform', '') or '') in ORDERABLE_PLATFORMS
+
+        orderable = sorted((c for c in candidates if is_orderable(c)),
+                           key=lambda c: c['score'], reverse=True)
+        partner = sorted((c for c in candidates if not is_orderable(c)),
+                         key=lambda c: c['score'], reverse=True)[:MAX_UNORDERABLE_RESULTS]
+
+        head_len = max(0, page_size - len(partner))
+        return orderable[:head_len] + partner + orderable[head_len:]
 
     @staticmethod
     def _rank_by_value(results: List[Dict], intent: QueryIntent) -> List[Dict]:
@@ -500,11 +620,11 @@ class ExplanationService:
                 tail.append(f"{calories} cal")
             return f"{head} • {' • '.join(tail)}" if tail else head
 
-        # Calorie-focused queries
+        # Calorie-focused queries ("light" is earned under 400, not 490)
         if intent is not None and intent.calorie_limit is not None:
             if calories < 300:
                 parts.append(f"Very light at {calories} calories")
-            elif calories < 500:
+            elif calories < 400:
                 parts.append(f"Light meal at {calories} calories")
             else:
                 parts.append(f"{calories} calories")

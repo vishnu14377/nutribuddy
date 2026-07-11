@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import List
 
 from models.recipe import Recipe
+from utils.tags import sanitize_dietary_tags
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,16 @@ class FixtureConnector:
                     f"{self.fixture_path} item {i} has source_platform="
                     f"'{recipe.source_platform}', expected '{self.platform}'"
                 )
+            # Tag honesty is enforced at load time regardless of what the
+            # fixture says — a 'keto-friendly' badge on an 18g-carb item is a
+            # lie on the card.
+            recipe.dietary_tags = sanitize_dietary_tags(
+                recipe.dietary_tags,
+                carbs=recipe.estimated_carbs or 0,
+                protein=recipe.estimated_protein or 0,
+                name=recipe.name,
+                description=recipe.description or '',
+            )
             items.append(recipe)
 
         logger.info(f"FixtureConnector[{self.platform}]: loaded {len(items)} items")

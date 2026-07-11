@@ -47,14 +47,16 @@ export default function HomePage() {
 
   // ── Search ──────────────────────────────────────────────────────────────────
 
-  const runSearch = async (query, platform = activePlatform) => {
+  const runSearch = async (query, platform = activePlatform, { consumeQuota = true } = {}) => {
     if (isSearching) return; // Enter key must not double-fire (and double-burn quota)
     const q = (query ?? searchQuery).trim();
     if (!q) { toast.error("Enter what you're looking for!"); return; }
 
-    const { allowed, remaining: left } = consumeSearch();
-    if (!allowed) { setRemaining(0); setShowUpgrade(true); return; }
-    setRemaining(left);
+    if (consumeQuota) {
+      const { allowed, remaining: left } = consumeSearch();
+      if (!allowed) { setRemaining(0); setShowUpgrade(true); return; }
+      setRemaining(left);
+    }
 
     setIsSearching(true);
     try {
@@ -89,8 +91,9 @@ export default function HomePage() {
     setActivePlatform(platform);
     // Re-run whenever there's a query — including after a zero-result search,
     // where the toast explicitly tells the user to try "All platforms".
+    // Refining the SAME query by platform is free; only new queries burn quota.
     if (searchQuery.trim()) {
-      runSearch(searchQuery, platform);
+      runSearch(searchQuery, platform, { consumeQuota: false });
     }
   };
 

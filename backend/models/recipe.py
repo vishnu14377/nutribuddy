@@ -84,7 +84,9 @@ class SearchQuery(BaseModel):
     - "30g protein low carb"
     """
 
-    query: str
+    # Bounded so an oversized paste 422s cleanly instead of blowing up inside
+    # the embedding call as a raw 500.
+    query: str = Field(min_length=1, max_length=1000)
     filters: Optional[dict] = {}
     restaurant_name: Optional[str] = None   # narrow results to a specific restaurant
     source_platform: Optional[str] = None   # narrow results to one delivery platform

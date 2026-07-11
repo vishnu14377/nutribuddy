@@ -279,12 +279,17 @@ def create_recipe_router(
                            f"Available: {sorted(known)}"
                 )
         if enhanced_search:
-            results = enhanced_search.search(
-                query.query,
-                top_k=10,
-                restaurant_filter=query.restaurant_name,
-                platform_filter=query.source_platform,
-            )
+            try:
+                results = enhanced_search.search(
+                    query.query,
+                    top_k=10,
+                    restaurant_filter=query.restaurant_name,
+                    platform_filter=query.source_platform,
+                )
+            except Exception as e:
+                # Never surface a bare 500 from the search path
+                logger.error(f"Search failed for '{query.query[:80]}': {e}")
+                raise HTTPException(status_code=502, detail="Search backend error; please retry")
             return [SearchResult(
                 recipe=r['recipe'],
                 match_score=r['match_score'],

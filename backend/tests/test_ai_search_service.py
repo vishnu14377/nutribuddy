@@ -110,6 +110,38 @@ class TestDietaryParsing:
     def test_no_meat(self):
         assert parse_intent('dinner with no meat').vegetarian is True
 
+    @pytest.mark.parametrize('query', [
+        'paneer butter masala with rice', 'tofu stir fry', 'falafel wrap', 'chana masala'])
+    def test_vegetarian_dish_names_imply_dietary_constraint(self, query):
+        # Round-3 CRITICAL: 'paneer' must never return a gyro bowl
+        assert parse_intent(query).vegetarian is True
+
+
+class TestSpelledNumbersAndExclusions:
+    def test_spelled_out_calorie_and_protein_constraints(self):
+        # Round-3: spelled numbers were silently ignored AND violators
+        # green-badged
+        intent = parse_intent('dinner under six hundred calories with at least forty grams of protein')
+        assert intent.calorie_limit == 600
+        assert intent.min_protein == 40
+
+    def test_spelled_compound_number(self):
+        assert parse_intent('under one hundred and forty grams of carbs').max_carbs == 140
+
+    def test_no_rice_becomes_exclusion_and_leaves_embedding_clean(self):
+        intent = parse_intent('grilled salmon with butter and vegetables no rice')
+        assert 'rice' in intent.excluded_terms
+        assert 'no rice' not in intent.cleaned_query.lower()
+        assert 'salmon' in intent.cleaned_query.lower()
+
+    def test_without_mayo_excluded(self):
+        assert 'mayo' in parse_intent('turkey club without mayo').excluded_terms
+
+    def test_no_meat_stays_a_dietary_intent_not_an_exclusion(self):
+        intent = parse_intent('dinner with no meat')
+        assert intent.vegetarian is True
+        assert 'meat' not in intent.excluded_terms
+
 
 # ── Constraint filtering (via _passes) ───────────────────────────────────────
 
@@ -284,8 +316,11 @@ class TestSearchBehavior:
             make_candidate('Pricey Protein', protein=50, price=14.5, score=0.6),
         ]
         results = run_search(candidates, '40g protein under 12 dollars')
-        names = [r['recipe'].name for r in results]
-        assert names == ['Cheap Protein']
+        # The qualifying item leads with the green flag; the over-budget item
+        # may follow only as an explicitly flagged near-miss
+        assert results[0]['recipe'].name == 'Cheap Protein'
+        assert results[0]['meets_constraints'] is True
+        assert all(r['meets_constraints'] is False for r in results[1:])
 
     def test_vegan_with_unreachable_macro_falls_back_within_vegan_pool(self):
         # Round-2 fix: "vegan high protein" must degrade to the best vegan
@@ -321,6 +356,61 @@ class TestSearchBehavior:
         results = run_search(candidates, 'keto dinner')
         # 0.48 orderable beats 0.52 unorderable after the 0.08 demotion
         assert results[0]['recipe'].name == 'Orderable Keto Bowl'
+
+    def test_excluded_term_drops_matching_items(self):
+        candidates = [
+            make_candidate('Crispy Rice Bowl', description='Blackened salmon over crispy rice', score=0.6),
+            make_candidate('Grilled Salmon Plate', description='Salmon with seasonal vegetables', score=0.5),
+        ]
+        results = run_search(candidates, 'grilled salmon no rice')
+        names = [r['recipe'].name for r in results]
+        assert names == ['Grilled Salmon Plate']
+
+    def test_untagged_vegetarian_result_is_unverified_not_green(self):
+        # Round-3: absence of meat words is not proof of vegetarian
+        candidates = [
+            make_candidate('Build Your Own Pizza', description='dough, red sauce, two toppings',
+                           protein=38, score=0.5),
+        ]
+        results = run_search(candidates, 'vegetarian high protein')
+        assert results[0]['meets_constraints'] is False
+        assert 'unverified' in results[0]['match_explanation'].lower()
+
+    def test_tagged_vegetarian_result_stays_verified(self):
+        candidates = [
+            make_candidate('Paneer Tikka', tags='vegetarian,high-protein', protein=35, score=0.5),
+        ]
+        results = run_search(candidates, 'vegetarian high protein')
+        assert results[0]['meets_constraints'] is True
+
+    def test_low_relevance_never_gets_green_badge(self):
+        # Round-3: soup must not "fit" a dessert search just because macros do
+        candidates = [make_candidate('Broccoli Cheddar Soup', calories=360, score=0.27)]
+        results = run_search(candidates, 'dessert under 500 calories')
+        assert results[0]['meets_constraints'] is False
+
+    def test_thin_results_append_labeled_near_misses(self):
+        # Round-3 nice-to-have: 1 strict match shouldn't be a dead end
+        candidates = [
+            make_candidate('Perfect Bowl', protein=45, calories=450, score=0.55),
+            make_candidate('Near Miss A', protein=38, calories=420, score=0.5),
+            make_candidate('Near Miss B', protein=36, calories=480, score=0.45),
+        ]
+        results = run_search(candidates, '40g protein under 500 calories')
+        assert results[0]['recipe'].name == 'Perfect Bowl'
+        assert results[0]['meets_constraints'] is True
+        assert len(results) >= 2
+        assert all(r['meets_constraints'] is False for r in results[1:])
+
+    def test_unorderable_items_capped_and_ranked_below_orderable(self):
+        candidates = (
+            [make_candidate(f'Partner {i}', protein=40 + i, carbs=5, score=0.6, platform='biterush', tags='keto-friendly') for i in range(4)]
+            + [make_candidate('Orderable Keto', protein=40, carbs=8, score=0.4, platform='ubereats')]
+        )
+        results = run_search(candidates, 'keto dinner')
+        names = [r['recipe'].name for r in results]
+        assert names[0] == 'Orderable Keto'
+        assert sum(1 for n in names if n.startswith('Partner')) <= 2
 
     def test_value_query_ranks_by_protein_per_dollar(self):
         candidates = [
