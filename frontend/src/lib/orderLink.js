@@ -26,7 +26,12 @@ export const PLATFORMS = {
   doordash: {
     label: "DoorDash",
     badgeClass: "bg-red-100 text-red-700",
-    buildUrl: (term) => `https://www.doordash.com/search/store/${encodeURIComponent(term)}`,
+    // /search/store/ searches STORES: restaurant-only lands the store page
+    // reliably; the dish name stays in the copyable search-term floor.
+    buildUrl: (term, recipe) =>
+      `https://www.doordash.com/search/store/${encodeURIComponent(
+        cleanRestaurantName(recipe?.restaurant_name) || term
+      )}`,
   },
   biterush: {
     label: "BiteRush",
@@ -81,8 +86,12 @@ export function buildOrderLink(recipe) {
   };
   const searchTerm = buildSearchTerm(recipe);
 
-  // A backend-provided canonical link always wins (validate scheme).
-  if (recipe.order_url && /^https?:\/\//i.test(recipe.order_url)) {
+  // A backend-provided canonical link always wins (validate scheme) — but a
+  // localhost/dev URL is only usable when this app itself runs on localhost,
+  // otherwise it dead-ends a real customer.
+  const isDevHost = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const urlIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(recipe.order_url || "");
+  if (recipe.order_url && /^https?:\/\//i.test(recipe.order_url) && (!urlIsLocal || isDevHost)) {
     return {
       url: recipe.order_url,
       searchTerm,
@@ -93,7 +102,7 @@ export function buildOrderLink(recipe) {
   }
 
   return {
-    url: platform.buildUrl && searchTerm ? platform.buildUrl(searchTerm) : null,
+    url: platform.buildUrl && searchTerm ? platform.buildUrl(searchTerm, recipe) : null,
     searchTerm,
     platformLabel: platform.label,
     badgeClass: platform.badgeClass,

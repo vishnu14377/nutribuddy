@@ -57,6 +57,9 @@ def main():
     api_url = os.environ.get('BITERUSH_API_URL', 'http://localhost:4000').rstrip('/')
     front_url = os.environ.get('BITERUSH_FRONTEND_URL', 'http://localhost:5173').rstrip('/')
 
+    if 'localhost' in front_url or '127.0.0.1' in front_url:
+        logger.warning('BITERUSH_FRONTEND_URL is a localhost URL — order links will only '
+                       'work in local dev. Set the public BiteRush URL before production sync.')
     foods = fetch_foods(api_url)
     logger.info(f"BiteRush returned {len(foods)} foods")
 

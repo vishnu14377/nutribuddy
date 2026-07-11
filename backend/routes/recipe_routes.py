@@ -397,10 +397,17 @@ def create_recipe_router(
             try:
                 results = enhanced_search.search(query.question, top_k=5)
                 qualified = [r for r in results if r.get('meets_constraints', True)]
+                # Prose and results[] must never diverge: when nothing fully
+                # qualifies, ground the answer in the closest options (their
+                # tags still gate any dietary claims) instead of telling the
+                # user the catalog is empty while attaching dishes.
+                grounding = qualified or results
                 context_items = [{
                     **r['recipe'].model_dump(),
                     'dietary_tags': r['recipe'].dietary_tags or [],
-                } for r in qualified]
+                    'note': 'fits all stated constraints' if r.get('meets_constraints', True)
+                            else 'closest option — does not meet every stated constraint',
+                } for r in grounding]
                 supporting = [SearchResult(
                     recipe=r['recipe'],
                     match_score=r['match_score'],

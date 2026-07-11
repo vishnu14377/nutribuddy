@@ -36,14 +36,16 @@ SINGLE_MEAL_CALORIE_CEILING = 1400
 
 MULTI_SERVING_NAME_RE = re.compile(
     r'family|meal deal|party pack|party size|bundle|2 liter|2-liter|'
-    r'\(\s*\d+\s*servings?\s*\)', re.IGNORECASE
+    r'\(\s*\d+\s*servings?\s*\)|whole p(?:ie|izza)|1[4-9]\s?(?:\"|inch|\'\')', re.IGNORECASE
 )
 
 MEAT_WORDS_RE = re.compile(
     r'chicken|beef|steak|lamb|pork|bacon|ham\b|turkey|salmon|tuna|shrimp|prawn|'
     r'fish|crab|gyro|kofta|meatball|pepperoni|sausage|chorizo|brisket|ribs?\b|'
     r'wings?\b|carnitas|pastrami|prosciutto|anchov|nuggets?\b|duck|veal|lobster|'
-    r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b|gumbo|milanese|schnitzel', re.IGNORECASE
+    r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b|gumbo|milanese|schnitzel|'
+    r'mortadella|soppressata|salami|bologna|capicola|prosciutto|pancetta|chorizo|'
+    r'b\.m\.t|blt\b|cold cut', re.IGNORECASE
     # 'burger' counts as meat: real veggie burgers carry a vegetarian tag,
     # which is checked BEFORE this regex — an untagged ShackBurger must never
     # reach vegetarian results, even amber-flagged. Meat-implying dish names
@@ -63,6 +65,16 @@ def _is_orderable(candidate: Dict) -> bool:
 
 # Dish-type nouns: when the query names a dish, an item that isn't that dish
 # never earns the green badge — a brownie is not a "low calorie pizza".
+# Synonyms count in BOTH directions: a 'Veggie Shack' (patty) earns the
+# burger badge; 'grilled chicken' never green-badges a bacon cheeseburger.
+DISH_SYNONYMS = {
+    'burger': ('burger', 'patty', 'smash'),
+    'pizza': ('pizza', 'pie', 'margherita', 'calzone'),
+    'bowl': ('bowl', 'plate'),
+    'salad': ('salad', 'greens'),
+    'sandwich': ('sandwich', 'sub', 'hoagie', 'panini', 'melt'),
+}
+
 DISH_NOUNS = (
     'pizza', 'burger', 'taco', 'burrito', 'sushi', 'pad thai', 'noodle',
     'pasta', 'salad', 'sandwich', 'wrap', 'wings', 'soup', 'dessert',
@@ -236,6 +248,12 @@ def parse_intent(query: str) -> QueryIntent:
             cleaned = re.sub(rf'\b(?:no|without)\s+{term}\b', ' ', cleaned, flags=re.IGNORECASE)
     intent.excluded_terms = tuple(excluded)
     intent.cleaned_query = ' '.join(cleaned.split())
+
+    # Daily goals ("180g protein a day") are NOT per-dish floors — strip them
+    # before constraint extraction so a satisfiable ask isn't zeroed out.
+    work = re.sub(r'\d+(?:\.\d+)?\s*g(?:rams?)?\s*(?:of\s*)?(?:protein|carbs?|fat)\s*(?:a|per)\s*day', ' ', work)
+    work = re.sub(r'\d+\s*k?cal(?:orie)?s?\s*(?:a|per)\s*day', ' ', work)
+    work = re.sub(r'daily\s+(?:goal|target|intake)\s*(?:of\s*)?\d+\s*\w*', ' ', work)
 
     # 1. Gram-level macro limits: "under 15g carbs", "max 20 grams of fat"
     def take(pattern, handler):
@@ -435,8 +453,12 @@ class EnhancedAISearchService:
             md = c.get('metadata', {})
             # Cuisine deliberately excluded: a pizzeria brownie is not pizza
             text = f"{md.get('name', '')} {md.get('description', '')}".lower()
-            if named_dishes and not any(n in text for n in named_dishes):
-                return False
+            if named_dishes:
+                terms = []
+                for n in named_dishes:
+                    terms.extend(DISH_SYNONYMS.get(n, (n,)))
+                if not any(t in text for t in terms):
+                    return False
             if (has_meal_word or named_dishes) and DRINK_DESSERT_RE.search(text):
                 return False
             return True
@@ -533,7 +555,7 @@ class EnhancedAISearchService:
                 )
             if unverified_diet:
                 diet_word = 'vegan' if intent.vegan else 'vegetarian'
-                explanation = f"{diet_word.capitalize()} status unverified (no meat listed) • {explanation}"
+                explanation = f"{diet_word.capitalize()} status unverified — may contain meat, check with the restaurant • {explanation}"
             if recipe.source_platform not in ORDERABLE_PLATFORMS:
                 explanation = f"{explanation} • partner preview — ordering coming soon"
 
@@ -657,7 +679,10 @@ class EnhancedAISearchService:
                     total += 1.0  # unpriced/foreign items are far from a budget ask
             return total
 
-        return sorted(pool, key=lambda c: (shortfall(c), -c['score']))[:5]
+        # Items missing a limit by >50% are noise, not fallbacks (an 80g-carb
+        # item under a 15g keto cap helps nobody) — better a shorter list
+        near = [c for c in pool if shortfall(c) <= 0.5] or pool[:2]
+        return sorted(near, key=lambda c: (shortfall(c), -c['score']))[:5]
 
 
 class ExplanationService:
