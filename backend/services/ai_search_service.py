@@ -20,6 +20,10 @@ from models.recipe import Recipe
 
 logger = logging.getLogger(__name__)
 
+
+def protein_of(recipe) -> float:
+    return recipe.estimated_protein or 0
+
 # Below this cosine similarity, results are noise — better an honest empty
 # state than a page of 17%-match filler (scores in practice top out ~0.62).
 RELEVANCE_FLOOR = 0.25
@@ -559,11 +563,21 @@ class EnhancedAISearchService:
             if recipe.source_platform not in ORDERABLE_PLATFORMS:
                 explanation = f"{explanation} • partner preview — ordering coming soon"
 
+            # Value queries surface the actual value math; huge portions get
+            # named instead of cherry-picking one good macro.
+            md_price = recipe.price or 0
+            if intent.value_seek and recipe.currency == 'USD' and md_price > 0 and protein_of(recipe) > 0:
+                explanation = f"{explanation} • {protein_of(recipe) / md_price:.1f}g protein per $"
+            if intent.min_protein is not None and intent.calorie_limit is None \
+                    and (recipe.estimated_calories or 0) >= 800:
+                explanation = f"{explanation} • hearty {recipe.estimated_calories}-cal portion"
+
             final_results.append({
                 'recipe': recipe,
                 'match_score': result['score'],
                 'match_explanation': explanation,
                 'meets_constraints': item_meets,
+                'constrained': intent.has_any_constraint(),
             })
 
         logger.info(f"Returning {len(final_results)} results")

@@ -7,7 +7,7 @@ import { formatPrice } from "@/lib/formatPrice";
 import { buildOrderLink } from "@/lib/orderLink";
 
 export const RecipeCard = ({ result, index }) => {
-  const { recipe, match_score, match_explanation, meets_constraints } = result;
+  const { recipe, match_score, match_explanation, meets_constraints, constrained } = result;
   const isFallback = meets_constraints === false;
 
   const displayPrice = formatPrice(recipe);
@@ -38,11 +38,13 @@ export const RecipeCard = ({ result, index }) => {
                 <Badge className="font-bold text-xs bg-amber-100 text-amber-700">
                   Closest match
                 </Badge>
-              ) : (
+              ) : constrained ? (
                 <Badge className="font-bold text-xs bg-green-600 text-white">
                   <Check className="w-3 h-3 mr-1" />
                   Fits your search
                 </Badge>
+              ) : (
+                <Badge className="font-bold text-xs bg-gray-100 text-gray-600">Match</Badge>
               )}
               <Badge className={`text-xs border-0 ${badgeClass}`}>{platformLabel}</Badge>
               {recipe.restaurant_name && (

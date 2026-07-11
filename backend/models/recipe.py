@@ -115,3 +115,6 @@ class SearchResult(BaseModel):
     match_score: float
     match_explanation: str
     meets_constraints: bool = True
+    # False when the query had no parseable constraints — the UI must not
+    # assert "Fits your search" when there was nothing to fit.
+    constrained: bool = False

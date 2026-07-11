@@ -317,6 +317,7 @@ def create_recipe_router(
                 match_score=r['match_score'],
                 match_explanation=r['match_explanation'],
                 meets_constraints=r.get('meets_constraints', True),
+                constrained=r.get('constrained', False),
             ) for r in results]
 
         filters = {'platform': query.source_platform} if query.source_platform else None
@@ -378,6 +379,20 @@ def create_recipe_router(
                     'postal_code': r['postal_code'],
                 })
         nearby.sort(key=lambda r: r['distance_km'])
+        # Interleave platforms so one platform's density can't bury the others
+        # for platform-loyal users (round 6: 11/12 DC results were Uber Eats)
+        if not source_platform:
+            by_platform = {}
+            for r in nearby:
+                by_platform.setdefault(r['source_platform'], []).append(r)
+            interleaved, buckets = [], list(by_platform.values())
+            while buckets and len(interleaved) < limit:
+                for bucket in list(buckets):
+                    if bucket:
+                        interleaved.append(bucket.pop(0))
+                    if not bucket:
+                        buckets.remove(bucket)
+            nearby = interleaved
         return {'zipcode': zipcode, 'radius_km': radius_km, 'restaurants': nearby[:limit]}
 
     @router.post("/ask")
@@ -413,6 +428,7 @@ def create_recipe_router(
                     match_score=r['match_score'],
                     match_explanation=r['match_explanation'],
                     meets_constraints=r.get('meets_constraints', True),
+                    constrained=r.get('constrained', False),
                 ) for r in (qualified or results)[:3]]
             except Exception as e:
                 logger.warning(f"Ask grounding search failed (continuing without): {e}")
