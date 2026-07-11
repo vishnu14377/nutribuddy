@@ -7,11 +7,12 @@ import { formatPrice } from "@/lib/formatPrice";
 import { buildOrderLink } from "@/lib/orderLink";
 
 export const RecipeCard = ({ result, index }) => {
-  const { recipe, match_score, match_explanation } = result;
+  const { recipe, match_score, match_explanation, meets_constraints } = result;
+  const isFallback = meets_constraints === false;
 
   const displayPrice = formatPrice(recipe);
   const matchPct = Math.round(match_score * 100);
-  const { url, searchTerm, platformLabel, badgeClass } = buildOrderLink(recipe);
+  const { url, searchTerm, platformLabel, badgeClass, copyable } = buildOrderLink(recipe);
 
   const copySearchTerm = async () => {
     try {
@@ -31,24 +32,30 @@ export const RecipeCard = ({ result, index }) => {
           <div className="flex-1 min-w-0">
             {/* Badges row */}
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <Badge
-                className={`font-bold text-xs ${
-                  matchPct >= 85
-                    ? "bg-green-600 text-white"
-                    : matchPct >= 70
-                    ? "bg-green-100 text-green-700"
-                    : "bg-gray-100 text-gray-600"
-                }`}
-              >
-                {matchPct}% Match
-              </Badge>
+              {isFallback ? (
+                <Badge className="font-bold text-xs bg-amber-100 text-amber-700">
+                  Closest match
+                </Badge>
+              ) : (
+                <Badge
+                  className={`font-bold text-xs ${
+                    matchPct >= 55
+                      ? "bg-green-600 text-white"
+                      : matchPct >= 40
+                      ? "bg-green-100 text-green-700"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {matchPct}% Match
+                </Badge>
+              )}
               <Badge className={`text-xs border-0 ${badgeClass}`}>{platformLabel}</Badge>
               {recipe.restaurant_name && (
                 <Badge variant="outline" className="text-xs truncate max-w-[160px]">
                   {recipe.restaurant_name}
                 </Badge>
               )}
-              {index === 0 && (
+              {index === 0 && !isFallback && (
                 <Badge className="bg-amber-100 text-amber-700 text-xs">Top Pick</Badge>
               )}
             </div>
@@ -94,31 +101,35 @@ export const RecipeCard = ({ result, index }) => {
           <MacroTile value={recipe.estimated_fat}     unit="g" label="Fat"     color="pink" />
         </div>
 
-        {/* Order CTA: web deep link when the platform has one, copy fallback otherwise */}
+        {/* Order CTA: deep link > copy fallback > honest "coming soon" for
+            platforms with no reachable destination */}
         {url ? (
-          <Button asChild className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
-            <a href={url} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="w-4 h-4 mr-2" />
-              Order on {platformLabel}
-            </a>
-          </Button>
-        ) : (
+          <>
+            <Button asChild className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg">
+              <a href={url} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Order on {platformLabel}
+              </a>
+            </Button>
+            <button
+              onClick={copySearchTerm}
+              className="w-full text-center text-xs text-gray-400 hover:text-green-600 transition-colors -mt-2"
+            >
+              or copy search term
+            </button>
+          </>
+        ) : copyable ? (
           <Button
             onClick={copySearchTerm}
-            disabled={!searchTerm}
             className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg"
           >
             <Copy className="w-4 h-4 mr-2" />
             Copy search for {platformLabel}
           </Button>
-        )}
-        {url && (
-          <button
-            onClick={copySearchTerm}
-            className="w-full text-center text-xs text-gray-400 hover:text-green-600 transition-colors -mt-2"
-          >
-            or copy search term
-          </button>
+        ) : (
+          <div className="w-full text-center text-sm text-gray-400 border border-dashed border-gray-200 rounded-lg py-2.5">
+            Partner item — ordering coming soon
+          </div>
         )}
       </CardContent>
     </Card>

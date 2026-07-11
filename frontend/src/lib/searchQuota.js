@@ -7,10 +7,8 @@
  * FastAPI dependency on POST /api/search (see docs/monetization.md).
  */
 
-export const FREE_SEARCHES_PER_DAY = parseInt(
-  process.env.REACT_APP_FREE_SEARCHES_PER_DAY ?? "5",
-  10
-);
+const _configured = parseInt(process.env.REACT_APP_FREE_SEARCHES_PER_DAY ?? "5", 10);
+export const FREE_SEARCHES_PER_DAY = Number.isFinite(_configured) && _configured > 0 ? _configured : 5;
 
 const STORAGE_KEY = "nb_search_quota";
 const BYPASS_KEY = "nb_paywall_off";
@@ -60,6 +58,18 @@ export function consumeSearch() {
     return { allowed: true, remaining: FREE_SEARCHES_PER_DAY - next.used };
   } catch {
     return { allowed: true, remaining: FREE_SEARCHES_PER_DAY };
+  }
+}
+
+/** Refund one search (e.g. when the API request itself failed). */
+export function refundSearch() {
+  if (isPaywallDisabled()) return;
+  try {
+    const quota = readQuota();
+    const next = { date: quota.date, used: Math.max(0, quota.used - 1) };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // storage unavailable: nothing was consumed either
   }
 }
 

@@ -53,3 +53,9 @@ class TestFixtureContract:
 def test_unknown_platform_raises():
     with pytest.raises(FileNotFoundError):
         FixtureConnector('grubhub').fetch_items()
+
+
+def test_fixtures_exist():
+    """If the glob comes up empty, every parametrized test above silently
+    vanishes — this test makes that failure loud."""
+    assert set(FIXTURE_PLATFORMS) >= {'ubereats', 'doordash', 'biterush'}

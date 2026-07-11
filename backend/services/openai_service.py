@@ -64,22 +64,56 @@ class OpenAIService:
             logger.error(f"Error generating batch embeddings: {e}")
             raise
 
-    def estimate_nutrition(self, name: str, description: str = "") -> Dict[str, Any]:
+    def estimate_nutrition(
+        self,
+        name: str,
+        description: str = "",
+        restaurant_name: str = "",
+        price: float = None,
+        currency: str = "",
+        correction_note: str = "",
+    ) -> Dict[str, Any]:
         """Estimate nutritional values for a menu item using GPT-4o.
+
+        Estimates cover the ENTIRE item as sold — a whole pizza gets whole-pie
+        macros, never per-slice. Restaurant and price context anchor the
+        portion size (a $29.90 item is not a 150-calorie snack).
 
         Args:
             name: Menu item name
             description: Menu item description
+            restaurant_name: Restaurant selling the item (portion context)
+            price: Item price in major currency units (portion context)
+            currency: ISO 4217 code for the price
+            correction_note: Feedback appended when re-asking after an
+                implausible first estimate
 
         Returns:
             Dictionary with estimated calories, protein, carbs, fat
         """
+        price_line = f"Price: {currency or ''} {price:.2f}".strip() if price else "Price: unknown"
         prompt = f"""You are a nutrition expert. Estimate the nutritional values for this menu item.
 
 Menu Item: {name}
+Restaurant: {restaurant_name or 'Unknown'}
 Description: {description if description else 'No description available'}
+{price_line}
 
-Provide your best estimate for a typical serving size. Be realistic based on common restaurant portions.
+CRITICAL RULES:
+- Estimate the ENTIRE item exactly as it is sold and delivered. If the item is
+  a whole pizza, estimate the WHOLE pie (a whole cheese pizza is ~1800-2400
+  kcal, never 250-350 — that is one slice). If it is "10 pc wings", estimate
+  all 10 pieces. If a size is in the name (14", large, footlong), honor it.
+- Use the price as a portion sanity check: a $25+ item from a restaurant is a
+  large/whole item, not a snack. If your calorie estimate implies less than
+  ~40 kcal per dollar for an entree, re-check your portion assumption.
+- Item names at pizzerias like "Pepperoni" or "Cheese" refer to WHOLE PIZZAS,
+  not toppings or slices.
+- dietary_tags must reflect the whole item: never tag "keto-friendly" above
+  15g carbs, "low-carb" above 30g, or "high-protein" below 30g protein.
+  Never tag "vegetarian"/"vegan" if the name or description mentions meat,
+  poultry, or fish.
+{f'- CORRECTION: {correction_note}' if correction_note else ''}
 
 Respond in JSON format ONLY with these fields:
 {{
@@ -91,12 +125,12 @@ Respond in JSON format ONLY with these fields:
     "confidence": "<low/medium/high>"
 }}
 
-Consider:
-- Pizza slices are typically 250-350 calories
-- Wings (10pc) are typically 800-1200 calories with 80-100g protein
-- Pasta dishes are typically 600-1000 calories
-- Sandwiches/subs are typically 400-800 calories
-- Salads without heavy dressing are typically 200-500 calories
+Typical whole-item anchors:
+- Whole 14-16" pizza: 1800-2800 calories
+- Wings (10pc): 800-1200 calories with 60-100g protein
+- Pasta entree: 600-1000 calories
+- Sandwich/sub (6"): 400-800; footlong: 700-1100
+- Entree salad without heavy dressing: 200-500 calories
 
 Only output the JSON, nothing else."""
 

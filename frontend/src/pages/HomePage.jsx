@@ -7,7 +7,7 @@ import { Toaster, toast } from "sonner";
 import { RecipeCard } from "@/components/RecipeCard";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { PLATFORMS } from "@/lib/orderLink";
-import { consumeSearch, getRemaining, isPaywallDisabled, FREE_SEARCHES_PER_DAY } from "@/lib/searchQuota";
+import { consumeSearch, refundSearch, getRemaining, isPaywallDisabled, FREE_SEARCHES_PER_DAY } from "@/lib/searchQuota";
 
 const NUTRIBUDDY_API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -24,7 +24,8 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery]     = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching]     = useState(false);
-  const [activePlatform, setActivePlatform] = useState(null); // null = all platforms
+  const [activePlatform, setActivePlatform] = useState(null);   // chip selection; null = all
+  const [resultsPlatform, setResultsPlatform] = useState(null); // platform the SHOWN results were fetched with
   const [stats, setStats]                 = useState(null);
   const [dataReady, setDataReady]         = useState(false);
   const [showUpgrade, setShowUpgrade]     = useState(false);
@@ -47,11 +48,12 @@ export default function HomePage() {
   // ── Search ──────────────────────────────────────────────────────────────────
 
   const runSearch = async (query, platform = activePlatform) => {
+    if (isSearching) return; // Enter key must not double-fire (and double-burn quota)
     const q = (query ?? searchQuery).trim();
     if (!q) { toast.error("Enter what you're looking for!"); return; }
 
     const { allowed, remaining: left } = consumeSearch();
-    if (!allowed) { setShowUpgrade(true); return; }
+    if (!allowed) { setRemaining(0); setShowUpgrade(true); return; }
     setRemaining(left);
 
     setIsSearching(true);
@@ -61,6 +63,7 @@ export default function HomePage() {
 
       const { data } = await axios.post(`${NUTRIBUDDY_API}/search`, payload);
       setSearchResults(data);
+      setResultsPlatform(platform ?? null);
       if (data.length === 0) {
         toast.info(
           platform
@@ -69,6 +72,8 @@ export default function HomePage() {
         );
       }
     } catch {
+      refundSearch();
+      setRemaining(getRemaining());
       toast.error("Search failed. Is the AI backend running?");
     } finally {
       setIsSearching(false);
@@ -82,7 +87,9 @@ export default function HomePage() {
 
   const handlePlatformChip = (platform) => {
     setActivePlatform(platform);
-    if (searchQuery.trim() && searchResults.length > 0) {
+    // Re-run whenever there's a query — including after a zero-result search,
+    // where the toast explicitly tells the user to try "All platforms".
+    if (searchQuery.trim()) {
       runSearch(searchQuery, platform);
     }
   };
@@ -211,11 +218,17 @@ export default function HomePage() {
         <div id="ai-results">
           {searchResults.length > 0 && (
             <>
+              {searchResults.every((r) => r.meets_constraints === false) && (
+                <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Nothing fully matches your constraints — showing the closest options instead.
+                  Each card notes exactly where it misses.
+                </div>
+              )}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
                   <h2 className="text-2xl font-bold">
-                    {activePlatform
-                      ? `Matches on ${PLATFORMS[activePlatform]?.label ?? activePlatform}`
+                    {resultsPlatform
+                      ? `Matches on ${PLATFORMS[resultsPlatform]?.label ?? resultsPlatform}`
                       : "Your AI Matches"}
                   </h2>
                   <p className="text-gray-500 text-sm">
@@ -223,7 +236,7 @@ export default function HomePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {activePlatform && (
+                  {resultsPlatform && (
                     <Button
                       variant="outline"
                       className="text-sm"

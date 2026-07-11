@@ -26,13 +26,15 @@ export const PLATFORMS = {
   doordash: {
     label: "DoorDash",
     badgeClass: "bg-red-100 text-red-700",
-    // No stable public search URL pattern verified yet -> copy-only fallback
-    buildUrl: null,
+    buildUrl: (term) => `https://www.doordash.com/search/store/${encodeURIComponent(term)}`,
   },
   biterush: {
     label: "BiteRush",
     badgeClass: "bg-orange-100 text-orange-700",
+    // Partner platform with no public ordering destination yet: a copy button
+    // pointing nowhere is worse than no button.
     buildUrl: null,
+    noDestination: true,
   },
 };
 
@@ -41,9 +43,17 @@ function cleanRestaurantName(name) {
   return (name || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
 }
 
-/** Build the search term a user would paste into the platform's search box. */
+/**
+ * Build the search term a user would paste into the platform's search box.
+ * Piece counts and em-dash separators are stripped so platform search can
+ * actually resolve it: "10 pc Classic Wings — Lemon Pepper" -> "Classic Wings Lemon Pepper".
+ */
 export function buildSearchTerm(recipe) {
-  return [recipe.name, cleanRestaurantName(recipe.restaurant_name)]
+  const dish = (recipe.name || "")
+    .replace(/^\d+\s*(?:pc|pcs|piece|pieces|ct)\b\.?\s*/i, "")
+    .replace(/\s+[—–-]{1,2}\s+/g, " ")
+    .trim();
+  return [dish, cleanRestaurantName(recipe.restaurant_name)]
     .filter(Boolean)
     .join(" ")
     .trim();
@@ -52,16 +62,31 @@ export function buildSearchTerm(recipe) {
 /**
  * Resolve everything the order CTA needs for one recipe.
  *
- * @returns {{ url: string|null, searchTerm: string, platformLabel: string, badgeClass: string }}
+ * copyable=false means the platform has no reachable destination (no URL and
+ * nowhere to paste a search term) — render an informational state, not a CTA.
+ *
+ * @returns {{ url: string|null, searchTerm: string, platformLabel: string, badgeClass: string, copyable: boolean }}
  */
 export function buildOrderLink(recipe) {
   const platformKey = recipe.source_platform || DEFAULT_PLATFORM;
-  const platform = PLATFORMS[platformKey] || PLATFORMS[DEFAULT_PLATFORM];
+  // An unknown platform must never be silently relabeled as another platform's
+  // CTA — fall back to an honest generic entry (label = the platform key).
+  const platform = PLATFORMS[platformKey] || {
+    label: platformKey,
+    badgeClass: "bg-gray-100 text-gray-600",
+    buildUrl: null,
+  };
   const searchTerm = buildSearchTerm(recipe);
 
   // A backend-provided canonical link always wins (validate scheme).
   if (recipe.order_url && /^https?:\/\//i.test(recipe.order_url)) {
-    return { url: recipe.order_url, searchTerm, platformLabel: platform.label, badgeClass: platform.badgeClass };
+    return {
+      url: recipe.order_url,
+      searchTerm,
+      platformLabel: platform.label,
+      badgeClass: platform.badgeClass,
+      copyable: true,
+    };
   }
 
   return {
@@ -69,5 +94,6 @@ export function buildOrderLink(recipe) {
     searchTerm,
     platformLabel: platform.label,
     badgeClass: platform.badgeClass,
+    copyable: !platform.noDestination && Boolean(searchTerm),
   };
 }

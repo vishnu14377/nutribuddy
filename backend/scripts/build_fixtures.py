@@ -29,6 +29,69 @@ logger = logging.getLogger(__name__)
 
 MAX_ITEMS_PER_RESTAURANT = 3
 
+MEAT_WORDS = ('chicken', 'beef', 'steak', 'lamb', 'pork', 'bacon', 'turkey',
+              'salmon', 'tuna', 'shrimp', 'fish', 'gyro', 'kofta', 'meatball',
+              'pepperoni', 'sausage', 'wings', 'ham')
+
+
+def _is_plausible(nutrition: dict, item: dict) -> str:
+    """Return '' if plausible, else a correction note describing the problem."""
+    calories = nutrition['calories']
+    protein = nutrition['protein']
+    price = item.get('price') or 0
+
+    # A $20+ entree claiming snack calories = per-slice/per-piece estimate bug
+    if price >= 15 and calories < max(40 * price, 300):
+        return (f"Your estimate of {calories} kcal is implausibly low for a "
+                f"{item.get('currency', '')} {price:.2f} item — you likely estimated a "
+                f"slice/piece instead of the whole item as sold. Re-estimate the ENTIRE item.")
+    if calories <= 0:
+        return "Calories must be positive for a food item."
+    name_desc = f"{item.get('name', '')} {item.get('description', '')}".lower()
+    if protein <= 0 and any(w in name_desc for w in MEAT_WORDS + ('cheese', 'egg')):
+        return "Protein of 0g is implausible for an item containing meat/cheese/egg."
+    return ''
+
+
+def _sanitize_tags(nutrition: dict, item: dict) -> list:
+    """Enforce tag honesty regardless of what the model returned."""
+    tags = list(nutrition.get('dietary_tags', []))
+    carbs = nutrition['carbs']
+    protein = nutrition['protein']
+    name_desc = f"{item.get('name', '')} {item.get('description', '')}".lower()
+
+    def drop(tag):
+        return [t for t in tags if t != tag]
+
+    if carbs > 15:
+        tags = drop('keto-friendly')
+    if carbs > 30:
+        tags = drop('low-carb')
+    if protein < 30:
+        tags = drop('high-protein')
+    if any(w in name_desc for w in MEAT_WORDS):
+        tags = drop('vegetarian')
+        tags = drop('vegan')
+    return tags
+
+
+def _estimate_with_plausibility_check(openai_service, item: dict):
+    """Estimate nutrition; re-ask once with a correction note; None if still bad."""
+    kwargs = dict(
+        name=item['name'],
+        description=item.get('description', ''),
+        restaurant_name=item.get('restaurant_name', ''),
+        price=item.get('price'),
+        currency=item.get('currency', ''),
+    )
+    nutrition = openai_service.estimate_nutrition(**kwargs)
+    problem = _is_plausible(nutrition, item)
+    if not problem:
+        return nutrition
+    logger.info(f"Re-asking for {item['name']}: {problem}")
+    nutrition = openai_service.estimate_nutrition(**kwargs, correction_note=problem)
+    return None if _is_plausible(nutrition, item) else nutrition
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -66,20 +129,27 @@ def main():
 
     openai_service = OpenAIService(api_key=api_key)
     enriched = []
+    dropped = 0
     for i, item in enumerate(selected):
-        nutrition = openai_service.estimate_nutrition(item['name'], item.get('description', ''))
+        nutrition = _estimate_with_plausibility_check(openai_service, item)
+        if nutrition is None:
+            dropped += 1
+            logger.warning(f"Dropped implausible item: {item['name']} (${item['price']})")
+            continue
         recipe = Recipe(**{
             **item,
             'estimated_calories': nutrition['calories'],
             'estimated_protein': nutrition['protein'],
             'estimated_carbs': nutrition['carbs'],
             'estimated_fat': nutrition['fat'],
-            'dietary_tags': nutrition.get('dietary_tags', []),
+            'dietary_tags': _sanitize_tags(nutrition, item),
         })
         enriched.append(recipe.model_dump())
         if (i + 1) % 10 == 0:
-            logger.info(f"Estimated nutrition for {i + 1}/{len(selected)} items")
+            logger.info(f"Estimated nutrition for {i + 1}/{len(selected)} items ({dropped} dropped)")
             time.sleep(0.5)
+    if dropped:
+        logger.warning(f"Dropped {dropped} items that failed plausibility after retry")
 
     out_path = Path(__file__).resolve().parent.parent / args.out
     out_path.parent.mkdir(parents=True, exist_ok=True)

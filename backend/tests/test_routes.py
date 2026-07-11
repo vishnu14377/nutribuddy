@@ -122,6 +122,104 @@ class TestAdminGuard:
         assert client.delete('/api/recipes/clear').status_code == 200
 
 
+class TestSearchQueryNormalization:
+    def test_platform_filter_normalized_like_ingestion(self):
+        from models.recipe import SearchQuery
+        assert SearchQuery(query='x', source_platform='UberEats ').source_platform == 'ubereats'
+        assert SearchQuery(query='x', source_platform='  ').source_platform is None
+        assert SearchQuery(query='x').source_platform is None
+
+
+class TestDefaultCurrencyValidation:
+    def test_invalid_default_currency_fails_at_startup(self, tmp_path):
+        db = DatabaseService(str(tmp_path / 't.db'))
+        with pytest.raises(ValueError, match='DEFAULT_CURRENCY'):
+            create_recipe_router(db, FakeVectorService(), default_currency='$')
+
+    def test_lowercase_default_currency_normalized(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('ADMIN_API_TOKEN', raising=False)
+        db = DatabaseService(str(tmp_path / 't.db'))
+        app = FastAPI()
+        app.include_router(create_recipe_router(db, FakeVectorService(), default_currency='usd'))
+        c = TestClient(app)
+        c.post('/api/ingest/items', json=[item('A', 'ubereats', currency=None)])
+        assert db.get_all_recipes()[0]['currency'] == 'USD'
+
+
+class FailingVectorService(FakeVectorService):
+    """Stores only half the batch, simulating mid-ingest embedding failure."""
+
+    def store_recipes_batch(self, recipes, batch_size=50):
+        for r in recipes[: len(recipes) // 2]:
+            self.vectors[r.id] = {'platform': r.source_platform}
+        return len(recipes) // 2
+
+
+class TestIngestSafety:
+    def test_partial_vector_failure_aborts_without_destroying_old_data(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('ADMIN_API_TOKEN', raising=False)
+        db = DatabaseService(str(tmp_path / 't.db'))
+        good_vs = FakeVectorService()
+        app = FastAPI()
+        app.include_router(create_recipe_router(db, good_vs))
+        c = TestClient(app)
+        c.post('/api/ingest/items', json=[item('Old A', 'ubereats'), item('Old B', 'ubereats')])
+        old_names = {r['name'] for r in db.get_all_recipes()}
+
+        # Swap in a failing vector service behind a fresh router on the same DB
+        bad_app = FastAPI()
+        bad_app.include_router(create_recipe_router(db, FailingVectorService()))
+        bad_c = TestClient(bad_app)
+        r = bad_c.post('/api/ingest/items?force=true', json=[item('New A', 'ubereats'), item('New B', 'ubereats')])
+        assert r.status_code == 502
+        # Old catalog untouched
+        assert {rec['name'] for rec in db.get_all_recipes()} == old_names
+
+    def test_small_delta_replace_requires_force(self, client):
+        many = [item(f'Dish {i}', 'ubereats') for i in range(12)]
+        client.post('/api/ingest/items', json=many)
+        # A 2-item push with replace=true would nuke 12 items -> 409
+        r = client.post('/api/ingest/items', json=[item('Delta', 'ubereats')])
+        assert r.status_code == 409
+        assert client.db.get_count() == 12
+        # force=true is the explicit override
+        r = client.post('/api/ingest/items?force=true', json=[item('Delta', 'ubereats')])
+        assert r.status_code == 200
+        assert client.db.get_count() == 1
+        # replace=false appends without the guard
+        r = client.post('/api/ingest/items?replace=false', json=[item('Delta 2', 'ubereats')])
+        assert r.status_code == 200
+
+
+class TestIngestUrlGuard:
+    def test_disabled_without_admin_token(self, tmp_path, monkeypatch):
+        monkeypatch.delenv('ADMIN_API_TOKEN', raising=False)
+        db = DatabaseService(str(tmp_path / 't.db'))
+        app = FastAPI()
+        app.include_router(create_recipe_router(db, FakeVectorService()))
+        c = TestClient(app)
+        r = c.post('/api/ingest/url?url=https://example.com/menu.xlsx')
+        assert r.status_code == 403
+        assert 'disabled' in r.json()['detail'].lower()
+
+    @pytest.mark.parametrize('bad_url', [
+        'http://example.com/menu.xlsx',       # not https
+        'https://localhost/menu.xlsx',
+        'https://127.0.0.1/menu.xlsx',
+        'https://10.0.0.5/menu.xlsx',
+        'https://169.254.169.254/latest/meta-data',  # cloud metadata endpoint
+    ])
+    def test_unsafe_urls_rejected(self, tmp_path, monkeypatch, bad_url):
+        monkeypatch.setenv('ADMIN_API_TOKEN', 'sekret')
+        db = DatabaseService(str(tmp_path / 't.db'))
+        app = FastAPI()
+        app.include_router(create_recipe_router(
+            db, FakeVectorService(), openai_api_key='sk-test-not-real'))
+        c = TestClient(app)
+        r = c.post(f'/api/ingest/url?url={bad_url}', headers={'X-Admin-Token': 'sekret'})
+        assert r.status_code == 400
+
+
 class TestRecipeEndpoints:
     def test_get_recipe_by_id_and_404(self, client):
         client.post('/api/ingest/items', json=[item('A', 'ubereats', id='rid1')])

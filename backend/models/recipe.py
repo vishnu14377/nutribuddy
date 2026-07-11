@@ -1,12 +1,21 @@
 """Recipe data models and schemas."""
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from typing import List, Optional
 import uuid
 
 
+def _clean_platform(v: Optional[str]) -> Optional[str]:
+    v = (v or '').strip().lower()
+    return v or None
+
+
 class Recipe(BaseModel):
     """Recipe/Menu item model with nutritional information."""
+
+    # Field validators also run on attribute assignment (e.g. currency
+    # defaulting at the ingest boundary), not just construction.
+    model_config = ConfigDict(validate_assignment=True)
 
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
@@ -62,8 +71,7 @@ class Recipe(BaseModel):
     @field_validator('source_platform')
     @classmethod
     def normalize_platform(cls, v):
-        v = (v or '').strip().lower()
-        return v or 'biterush'
+        return _clean_platform(v) or 'biterush'
 
 
 class SearchQuery(BaseModel):
@@ -81,10 +89,23 @@ class SearchQuery(BaseModel):
     restaurant_name: Optional[str] = None   # narrow results to a specific restaurant
     source_platform: Optional[str] = None   # narrow results to one delivery platform
 
+    @field_validator('source_platform')
+    @classmethod
+    def normalize_platform(cls, v):
+        # Ingestion lowercases platform metadata; the search filter must match
+        # ('UberEats' would otherwise silently return zero results).
+        return _clean_platform(v)
+
 
 class SearchResult(BaseModel):
-    """Search result with match score and AI explanation."""
+    """Search result with match score and AI explanation.
+
+    meets_constraints is False when nothing fully satisfied the parsed
+    constraints and this item is a closest-option fallback — the UI must
+    say so rather than presenting it as a match.
+    """
 
     recipe: Recipe
     match_score: float
     match_explanation: str
+    meets_constraints: bool = True

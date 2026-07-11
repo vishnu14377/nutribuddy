@@ -88,6 +88,6 @@ class TestRowToDict:
     def test_null_json_field_becomes_empty_list(self, db):
         db.upsert_recipe(sample_recipe(ingredients=None, dietary_tags=None))
         row = db.get_recipe_by_id('r1')
-        # json.dumps(None) stores 'null'; loading yields [] per service contract
-        assert row['ingredients'] == [] or row['ingredients'] is None
-        assert isinstance(db.get_recipe_by_id('r1'), dict)
+        # upsert stores `val or []` so None round-trips as [] — deterministic
+        assert row['ingredients'] == []
+        assert row['dietary_tags'] == []

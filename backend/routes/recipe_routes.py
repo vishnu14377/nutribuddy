@@ -2,6 +2,9 @@
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from typing import List, Optional
+from urllib.parse import urlparse
+import ipaddress
+import secrets
 import tempfile
 import time
 import os
@@ -26,8 +29,44 @@ def require_admin(x_admin_token: Optional[str] = Header(None)):
     When it is unset, access is allowed (preserves the current local-dev flow).
     """
     expected = os.environ.get('ADMIN_API_TOKEN')
-    if expected and x_admin_token != expected:
+    if expected and not secrets.compare_digest(x_admin_token or '', expected):
         raise HTTPException(status_code=403, detail="Admin token required")
+
+
+def require_admin_strict(x_admin_token: Optional[str] = Header(None)):
+    """Like require_admin, but the endpoint is DISABLED until a token is set.
+
+    Used for /api/ingest/url, which fetches a caller-supplied URL server-side
+    (SSRF surface) — it must never be reachable unauthenticated.
+    """
+    expected = os.environ.get('ADMIN_API_TOKEN')
+    if not expected:
+        raise HTTPException(
+            status_code=403,
+            detail="Endpoint disabled: set ADMIN_API_TOKEN to enable URL ingestion"
+        )
+    if not secrets.compare_digest(x_admin_token or '', expected):
+        raise HTTPException(status_code=403, detail="Admin token required")
+
+
+def _reject_unsafe_url(url: str) -> None:
+    """Basic SSRF guard: https only, no private/loopback/link-local hosts.
+
+    Not a complete defense (no post-resolution re-check) — the endpoint is
+    additionally admin-token-gated via require_admin_strict.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme != 'https':
+        raise HTTPException(status_code=400, detail="Only https:// URLs are allowed")
+    host = parsed.hostname or ''
+    if host in ('localhost',) or host.endswith('.local') or host.endswith('.internal'):
+        raise HTTPException(status_code=400, detail="Host not allowed")
+    try:
+        ip = ipaddress.ip_address(host)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise HTTPException(status_code=400, detail="Host not allowed")
+    except ValueError:
+        pass  # hostname, not an IP literal
 
 
 def create_recipe_router(
@@ -37,6 +76,18 @@ def create_recipe_router(
     default_currency: str = None,
 ) -> APIRouter:
     """Create recipe router."""
+    # Fail fast on a misconfigured DEFAULT_CURRENCY: an invalid code written
+    # into the DB would 500 every read path until manually scrubbed.
+    if default_currency:
+        try:
+            default_currency = Recipe.validate_currency(default_currency)
+        except ValueError as e:
+            raise ValueError(f"Invalid DEFAULT_CURRENCY env var: {e}") from e
+
+    if not os.environ.get('ADMIN_API_TOKEN'):
+        logger.warning("ADMIN_API_TOKEN is unset: ingest/clear endpoints are open (local-dev mode) "
+                       "and /api/ingest/url is disabled")
+
     router = APIRouter(prefix="/api", tags=["nutribuddy"])
 
     enhanced_search = None
@@ -54,19 +105,53 @@ def create_recipe_router(
         except Exception as e:
             logger.error(f"Failed to initialize AI search: {e}")
 
-    def _replace_sources(items: List[Recipe]) -> None:
-        """Per-source replace: wipe only the platforms present in this payload.
+    def _store_with_replace(items: List[Recipe], replace: bool) -> int:
+        """Ingest items new-data-first so failure never destroys existing data.
 
-        Pinecone serverless can't delete by metadata filter, so vector deletion
-        is ID-driven with SQLite as the ID source of truth: read IDs first,
-        delete those vectors, THEN delete the SQLite rows.
+        Order: (1) index new vectors; on partial failure, roll the new vectors
+        back and abort with 502 — the old catalog is untouched. (2) Only after
+        full success, delete the replaced platforms' old vectors (ID-driven:
+        Pinecone serverless has no metadata-filtered delete; SQLite is the ID
+        source of truth) and rows, then upsert the new rows.
         """
-        for platform in {item.source_platform for item in items}:
-            ids = db_service.get_ids_by_source(platform)
-            if ids:
-                vector_service.delete_by_ids(ids)
+        new_ids = {item.id for item in items}
+        stored = vector_service.store_recipes_batch(items, batch_size=50)
+        if stored < len(items):
+            vector_service.delete_by_ids(list(new_ids))
+            raise HTTPException(
+                status_code=502,
+                detail=f"Vector indexing failed ({stored}/{len(items)} stored); "
+                       f"ingest aborted, existing data untouched"
+            )
+        if replace:
+            for platform in {item.source_platform for item in items}:
+                old_ids = [i for i in db_service.get_ids_by_source(platform) if i not in new_ids]
+                if old_ids:
+                    vector_service.delete_by_ids(old_ids)
+                logger.info(f"Replaced source '{platform}': removed {len(old_ids)} existing items")
                 db_service.clear_source(platform)
-                logger.info(f"Replaced source '{platform}': removed {len(ids)} existing items")
+        for recipe in items:
+            db_service.upsert_recipe(recipe.model_dump())
+        return stored
+
+    def _guard_suspicious_replace(items: List[Recipe], force: bool) -> None:
+        """A small delta push with replace=True would silently destroy a whole
+        platform catalog — require explicit force for shrinks over 50%."""
+        if force:
+            return
+        by_platform = {}
+        for item in items:
+            by_platform.setdefault(item.source_platform, 0)
+            by_platform[item.source_platform] += 1
+        for platform, new_count in by_platform.items():
+            old_count = len(db_service.get_ids_by_source(platform))
+            if old_count >= 10 and new_count < old_count * 0.5:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"replace=true would shrink '{platform}' from {old_count} to "
+                           f"{new_count} items. If intended, retry with force=true; "
+                           f"for incremental additions use replace=false."
+                )
 
     def _apply_default_currency(items: List[Recipe]) -> None:
         defaulted = sum(1 for item in items if item.currency is None)
@@ -91,7 +176,7 @@ def create_recipe_router(
         }
 
     @router.post("/ingest/items", dependencies=[Depends(require_admin)])
-    async def ingest_items(items: List[Recipe], replace: bool = True):
+    async def ingest_items(items: List[Recipe], replace: bool = True, force: bool = False):
         """Bulk-ingest pre-structured items whose nutrition is already known.
 
         Contract: price = MAJOR currency units (12.99 == $12.99); currency =
@@ -101,28 +186,32 @@ def create_recipe_router(
         and fixture seeding to push catalogs.
 
         replace=True replaces ONLY the source platforms present in the payload;
-        other platforms' data is untouched.
+        other platforms' data is untouched. A payload that would shrink a
+        platform by more than half is rejected unless force=true.
         """
         if not items:
             raise HTTPException(status_code=400, detail="No items provided")
         _apply_default_currency(items)
         if replace:
-            _replace_sources(items)
-        for recipe in items:
-            db_service.upsert_recipe(recipe.model_dump())
-        stored = vector_service.store_recipes_batch(items, batch_size=50)
+            _guard_suspicious_replace(items, force)
+        stored = _store_with_replace(items, replace)
         return {"message": f"Ingested {len(items)} items", "count": len(items), "vectors_stored": stored}
 
-    @router.post("/ingest/url", dependencies=[Depends(require_admin)])
+    @router.post("/ingest/url", dependencies=[Depends(require_admin_strict)])
     async def ingest_from_url(url: str, limit: int = 200):
         """Import menu data from an Apify Uber Eats Excel export URL.
 
-        Prices are normalized to major USD units at this boundary; nutrition
-        is estimated per item via GPT. Replaces only the 'ubereats' source.
+        Requires ADMIN_API_TOKEN to be configured (the server fetches a
+        caller-supplied URL). Prices are normalized to major USD units at this
+        boundary; nutrition is estimated per item via GPT. Replaces only the
+        'ubereats' source.
         """
         if not openai_service:
             raise HTTPException(status_code=500, detail="OpenAI not configured")
 
+        _reject_unsafe_url(url)
+
+        tmp_path = None
         try:
             response = requests.get(url, timeout=120)
             response.raise_for_status()
@@ -132,7 +221,6 @@ def create_recipe_router(
                 tmp_path = tmp.name
 
             raw_items = DataIngestionService.extract_menu_items_from_excel(tmp_path, limit=limit)
-            os.unlink(tmp_path)
 
             if not raw_items:
                 raise HTTPException(status_code=400, detail="No items found")
@@ -142,7 +230,10 @@ def create_recipe_router(
                 try:
                     nutrition = openai_service.estimate_nutrition(
                         raw_item['name'],
-                        raw_item.get('description', '')
+                        raw_item.get('description', ''),
+                        restaurant_name=raw_item.get('restaurant_name', ''),
+                        price=raw_item.get('price'),
+                        currency=raw_item.get('currency', ''),
                     )
                     item = {
                         **raw_item,
@@ -160,17 +251,17 @@ def create_recipe_router(
                     logger.error(f"Error: {e}")
 
             recipes = [Recipe(**item) for item in items]
-            _replace_sources(recipes)
-            for recipe in recipes:
-                db_service.upsert_recipe(recipe.model_dump())
-            vector_service.store_recipes_batch(recipes, batch_size=50)
+            stored = _store_with_replace(recipes, replace=True)
 
-            return {"message": f"Imported {len(items)} items", "count": len(items)}
+            return {"message": f"Imported {len(items)} items", "count": len(items), "vectors_stored": stored}
 
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
     @router.post("/search", response_model=List[SearchResult])
     async def search(query: SearchQuery):
@@ -189,7 +280,8 @@ def create_recipe_router(
             return [SearchResult(
                 recipe=r['recipe'],
                 match_score=r['match_score'],
-                match_explanation=r['match_explanation']
+                match_explanation=r['match_explanation'],
+                meets_constraints=r.get('meets_constraints', True),
             ) for r in results]
 
         filters = {'platform': query.source_platform} if query.source_platform else None

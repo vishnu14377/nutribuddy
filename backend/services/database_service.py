@@ -143,8 +143,9 @@ class DatabaseService:
 
     def get_platform_counts(self) -> Dict[str, int]:
         with self.get_connection() as conn:
+            # NULL platform reads as 'biterush' everywhere (matches _row_to_dict)
             rows = conn.execute(
-                "SELECT COALESCE(source_platform, 'unknown') AS p, COUNT(*) AS n FROM recipes GROUP BY p"
+                "SELECT COALESCE(source_platform, 'biterush') AS p, COUNT(*) AS n FROM recipes GROUP BY p"
             ).fetchall()
             return {row['p']: row['n'] for row in rows}
 
