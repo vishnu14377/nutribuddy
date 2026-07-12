@@ -34,7 +34,11 @@ export const RecipeCard = ({ result, index }) => {
               {/* Raw cosine similarity was never a probability — a green check
                   ("this fits") is honest; a "43% Match" on a perfect result
                   reads as a coin flip. */}
-              {isFallback ? (
+              {isFallback && match_explanation?.startsWith("Different dish") ? (
+                <Badge className="font-bold text-xs bg-blue-50 text-blue-600">
+                  Different dish
+                </Badge>
+              ) : isFallback ? (
                 <Badge className="font-bold text-xs bg-amber-100 text-amber-700">
                   Closest match
                 </Badge>

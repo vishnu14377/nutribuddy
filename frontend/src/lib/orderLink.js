@@ -26,12 +26,9 @@ export const PLATFORMS = {
   doordash: {
     label: "DoorDash",
     badgeClass: "bg-red-100 text-red-700",
-    // /search/store/ searches STORES: restaurant-only lands the store page
-    // reliably; the dish name stays in the copyable search-term floor.
-    buildUrl: (term, recipe) =>
-      `https://www.doordash.com/search/store/${encodeURIComponent(
-        cleanRestaurantName(recipe?.restaurant_name) || term
-      )}`,
+    // General search carries dish + restaurant (Uber Eats parity); the
+    // copyable term remains the floor.
+    buildUrl: (term) => `https://www.doordash.com/search/${encodeURIComponent(term)}`,
   },
   biterush: {
     label: "BiteRush",
@@ -101,8 +98,14 @@ export function buildOrderLink(recipe) {
     };
   }
 
+  let built = platform.buildUrl && searchTerm ? platform.buildUrl(searchTerm, recipe) : null;
+  // The constructed fallback gets the same localhost guard as backend URLs —
+  // a misconfigured prod build must degrade to copy-search, not a dead link.
+  if (built && /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(built) && !isDevHost) {
+    built = null;
+  }
   return {
-    url: platform.buildUrl && searchTerm ? platform.buildUrl(searchTerm, recipe) : null,
+    url: built,
     searchTerm,
     platformLabel: platform.label,
     badgeClass: platform.badgeClass,

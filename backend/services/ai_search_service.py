@@ -94,8 +94,10 @@ DISH_NOUNS = (
 BEVERAGE_RE = re.compile(
     r'soda|cola|snapple|ramune|juice\b|lemonade|milkshakes?|shakes?\b|smoothie|'
     r'spindrift|sparkling|seltzer|\btea\b|\bwater\b|\d+\s*oz\b|sprite|'
-    r'soft drink|lassi|kombucha|espresso|latte|cappuccino', re.IGNORECASE
+    r'soft drink|lassi|kombucha|espresso|latte|cappuccino|slush|red bull|monster energy|gatorade|frappe', re.IGNORECASE
 )
+# "Add Texas Toast" / sides are add-ons, not lunches
+ADDON_RE = re.compile(r'^add\s|\bside\b|^extra\s', re.IGNORECASE)
 SWEETS_RE = re.compile(
     r'brownie|cookie|cake\b|donut|ice cream|candy|sundae|pudding|cheesecake', re.IGNORECASE
 )
@@ -305,7 +307,14 @@ def parse_intent(query: str) -> QueryIntent:
     )
 
     # 3. Calorie limits, on the remaining string
+    # Budget arithmetic first: "1400 calories a day ... ate/had 1000" -> 400
+    m = re.search(r'(\d+)\s*k?cal(?:orie)?s?\s*(?:a|per)\s*day.*?(?:ate|had|consumed|eaten)\s*(?:about\s*)?(\d+)', work)
+    if m and int(m.group(1)) > int(m.group(2)):
+        intent.calorie_limit = int(m.group(1)) - int(m.group(2))
+
     calorie_patterns = [
+        r'(\d+)\s*k?cal(?:orie)?s?\s*(?:left|remaining|to\s*spare)',
+        r'(?:only\s*)?have\s*(\d+)\s*k?cal(?:orie)?s?\b',
         r'(?:under|below|less\s*than|max(?:imum)?)\s*(\d+)\s*(?:k?cal(?:orie)?s?)',
         r'(\d+)\s*(?:k?cal(?:orie)?s?)\s*(?:or\s*less|or\s*under|max(?:imum)?)',
         r'<\s*(\d+)\s*(?:k?cal(?:orie)?s?)?',
@@ -313,6 +322,8 @@ def parse_intent(query: str) -> QueryIntent:
         r'(?:under|below)\s*(\d+)\b',  # bare "under 400" (macros/$ already removed)
     ]
     for pattern in calorie_patterns:
+        if intent.calorie_limit is not None:
+            break
         m = re.search(pattern, work)
         if m:
             limit = int(m.group(1))
@@ -464,6 +475,26 @@ class EnhancedAISearchService:
         # options instead of a blank screen.
         if intent.vegetarian or intent.vegan:
             pool = [c for c in candidates if self._passes(c, intent.dietary_only())]
+            if len(pool) < 3:
+                # The semantic top-75 may simply not contain tagged items —
+                # widen from the DB by tag so dietary users get the same
+                # closest-option fallback everyone else gets.
+                tag = 'vegan' if intent.vegan else 'vegetarian'
+                seen = {c['id'] for c in pool}
+                for row in self.db_service.get_recipes_by_tag(tag, limit=40):
+                    if row['id'] in seen:
+                        continue
+                    pool.append({'id': row['id'], 'score': 0.32, 'metadata': {
+                        'name': row.get('name', ''), 'description': row.get('description') or '',
+                        'calories': row.get('estimated_calories') or 0,
+                        'protein': row.get('estimated_protein') or 0,
+                        'carbs': row.get('estimated_carbs') or 0,
+                        'fat': row.get('estimated_fat') or 0,
+                        'price': row.get('price') or 0,
+                        'currency': row.get('currency') or '',
+                        'dietary_tags': ','.join(row.get('dietary_tags') or []),
+                        'platform': row.get('source_platform') or '',
+                    }})
             if not pool:
                 logger.info("No vegetarian/vegan matches — honest empty result")
                 return []
@@ -494,6 +525,8 @@ class EnhancedAISearchService:
                 return False
             if has_meal_word and 'dessert' not in query_lower_full and SWEETS_RE.search(text):
                 return False
+            if has_meal_word and ADDON_RE.search(md.get('name', '') or ''):
+                return False
             return True
 
         # Each entry is (candidate, base_meets, dish_mismatch). Ranking rules:
@@ -502,13 +535,27 @@ class EnhancedAISearchService:
         # - dish mismatches (constraints pass, different dish): after green
         # - thin orderable greens (<3): labeled near-misses instead of a cliff
         # - full fallback: closest-first ordering, never re-sorted by score
+        def diet_verified(c) -> bool:
+            if not (intent.vegetarian or intent.vegan):
+                return True
+            tags = (c.get('metadata', {}).get('dietary_tags', '') or '').lower()
+            return ('vegan' in tags) if intent.vegan else ('vegetarian' in tags or 'vegan' in tags)
+
+        explicit_no_meat = any(t in query.lower() for t in ('no meat', 'meatless', 'without meat'))
+        if explicit_no_meat:
+            # 'no meat' is a hard ask: unverified items don't surface at all
+            qualified = [c for c in qualified if diet_verified(c)]
+
         if qualified:
-            green = [c for c in qualified if dish_gate_ok(c)]
+            green = [c for c in qualified if dish_gate_ok(c) and diet_verified(c)]
+            unverified = [c for c in qualified if dish_gate_ok(c) and not diet_verified(c)]
             mismatched = [c for c in qualified if not dish_gate_ok(c)]
             if intent.value_seek:
                 ranked = [(c, True, False) for c in self._rank_by_value(green, intent)]
             else:
                 ranked = [(c, True, False) for c in self._rank_and_cap(green)]
+            ranked += [(c, False, False) for c in
+                       sorted(unverified, key=lambda c: c['score'], reverse=True)]
             ranked += [(c, False, True) for c in
                        sorted(mismatched, key=lambda c: c['score'], reverse=True)]
             if (len([c for c in green if _is_orderable(c)]) < 3

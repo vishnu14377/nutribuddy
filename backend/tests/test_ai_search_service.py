@@ -282,6 +282,10 @@ class FakeDB:
     def get_recipes_by_ids(self, ids):
         return [self.rows[i] for i in ids if i in self.rows]
 
+    def get_recipes_by_tag(self, tag, limit=40):
+        return [r for r in self.rows.values()
+                if any(tag in t for t in (r.get('dietary_tags') or []))][:limit]
+
 
 def run_search(candidates, query):
     svc = EnhancedAISearchService(FakeVectors(candidates), FakeDB(candidates))

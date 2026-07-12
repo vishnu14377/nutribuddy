@@ -147,6 +147,13 @@ class DatabaseService:
             cur = conn.execute('DELETE FROM recipes WHERE source_platform = ?', (source_platform,))
             return cur.rowcount
 
+    def get_recipes_by_tag(self, tag: str, limit: int = 40) -> List[Dict[str, Any]]:
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                'SELECT * FROM recipes WHERE dietary_tags LIKE ? LIMIT ?',
+                (f'%{tag}%', limit)).fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
     def get_restaurant_names(self) -> List[str]:
         with self.get_connection() as conn:
             rows = conn.execute(
