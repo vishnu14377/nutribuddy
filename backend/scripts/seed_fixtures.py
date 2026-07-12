@@ -46,7 +46,7 @@ def main():
     )
 
     for platform in platforms:
-        items = FixtureConnector(platform).fetch_items()
+        items = FixtureConnector(platform).fetch_items(limit=5000)
         # Per-source replace: SQLite is the ID source of truth; delete vectors
         # by those IDs first, then the rows.
         old_ids = db_service.get_ids_by_source(platform)
