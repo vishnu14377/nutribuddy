@@ -2,8 +2,10 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import os
 import logging
@@ -53,6 +55,18 @@ app.include_router(create_recipe_router(
     openai_api_key=openai_api_key,
     default_currency=os.environ.get('DEFAULT_CURRENCY') or None,
 ))
+
+
+@app.exception_handler(RequestValidationError)
+async def friendly_validation_errors(request: Request, exc: RequestValidationError):
+    """Plain-English validation errors — no pydantic internals for users."""
+    for err in exc.errors():
+        if err.get('type') == 'string_too_long':
+            return JSONResponse(status_code=422, content={
+                'detail': 'That text is too long — please keep it under '
+                          f"{err.get('ctx', {}).get('max_length', 1000)} characters."})
+    return JSONResponse(status_code=422, content={'detail': [
+        {k: v for k, v in e.items() if k in ('type', 'loc', 'msg')} for e in exc.errors()]})
 
 
 @app.get("/health")

@@ -49,7 +49,7 @@ MEAT_WORDS_RE = re.compile(
     r'wings?\b|carnitas|pastrami|prosciutto|anchov|nuggets?\b|duck|veal|lobster|'
     r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b|gumbo|milanese|schnitzel|'
     r'mortadella|soppressata|salami|bologna|capicola|prosciutto|pancetta|chorizo|'
-    r'b\.m\.t|blt\b|cold cut', re.IGNORECASE
+    r'b\.m\.t|blt\b|cold cut|goat|bison|venison|oxtail|pork grind|chicharr', re.IGNORECASE
     # 'burger' counts as meat: real veggie burgers carry a vegetarian tag,
     # which is checked BEFORE this regex — an untagged ShackBurger must never
     # reach vegetarian results, even amber-flagged. Meat-implying dish names
@@ -76,7 +76,9 @@ DISH_SYNONYMS = {
     'pizza': ('pizza', 'pie', 'margherita', 'calzone'),
     'bowl': ('bowl', 'plate'),
     'salad': ('salad', 'greens'),
-    'sandwich': ('sandwich', 'sub', 'hoagie', 'panini', 'melt'),
+    'sandwich': ('sandwich', 'sub', 'hoagie', 'panini', 'melt', 'club'),
+    'dessert': ('dessert', 'brownie', 'cookie', 'cake', 'sundae', 'ice cream',
+                'donut', 'cheesecake', 'pudding', 'sweet'),
 }
 
 DISH_NOUNS = (
@@ -86,17 +88,25 @@ DISH_NOUNS = (
     'paneer', 'tofu', 'falafel', 'gyro', 'sub ', 'shawarma', 'curry', 'ramen',
     'bowl', 'plate',
 )
-# Sodas and sweets never "fit" a meal or dish query
-DRINK_DESSERT_RE = re.compile(
-    r'soda|cola|snapple|ramune|juice\b|lemonade|brownie|cookie|cake\b|donut|'
-    r'ice cream|milkshakes?|shakes?\b|candy', re.IGNORECASE
+# Beverages never "fit" a meal/dish/snack query; sweets never fit MEALS but
+# absolutely fit dessert queries (round 7: the only sweets were blocked from
+# 'dessert' while sparkling water passed as a 'meal').
+BEVERAGE_RE = re.compile(
+    r'soda|cola|snapple|ramune|juice\b|lemonade|milkshakes?|shakes?\b|smoothie|'
+    r'spindrift|sparkling|seltzer|\btea\b|\bwater\b|\d+\s*oz\b|sprite|'
+    r'soft drink|lassi|kombucha|espresso|latte|cappuccino', re.IGNORECASE
 )
-MEAL_WORDS = ('breakfast', 'lunch', 'dinner', 'meal', 'entree')
+SWEETS_RE = re.compile(
+    r'brownie|cookie|cake\b|donut|ice cream|candy|sundae|pudding|cheesecake', re.IGNORECASE
+)
+DRINK_QUERY_WORDS = ('shake', 'smoothie', 'drink', 'juice', 'coffee', 'tea', 'latte')
+MEAL_WORDS = ('breakfast', 'lunch', 'dinner', 'meal', 'entree', 'snack')
 
+# Bare 'protein' is a topic, not a numeric ask — only phrases set the 30g gate
 PROTEIN_TERMS = (
     'high protein', 'protein rich', 'protein-rich', 'high-protein',
-    'lots of protein', 'more protein', 'protein heavy', 'protein', 'protien',
-    'proteina', 'proteinas',
+    'lots of protein', 'more protein', 'protein heavy', 'hi protien',
+    'high protien', 'alta en proteina',
 )
 LOW_CARB_TERMS = (
     'low carb', 'low-carb', 'low carbs', 'lo carb', 'fewer carbs', 'less carbs',
@@ -405,10 +415,26 @@ class EnhancedAISearchService:
         embed_query = intent.cleaned_query or query
         search_query = f"{embed_query} at {restaurant_filter}" if restaurant_filter else embed_query
 
-        # Wider candidate pool when constraints will thin it out
+        # Constraint-aware retrieval: numeric constraints join the Pinecone
+        # metadata filter so tight caps search the WHOLE catalog's compliant
+        # subset, not just the semantic top-75 ('300 calorie lunch' must find
+        # the 280-cal salad even if it doesn't embed near 'lunch').
         pool_size = 75 if intent.has_any_constraint() else 50
-        filters = {'platform': platform_filter} if platform_filter else None
-        candidates = self.vector_service.search(search_query, top_k=pool_size, filters=filters)
+        filters = {}
+        if platform_filter:
+            filters['platform'] = platform_filter
+        if intent.calorie_limit is not None:
+            filters['max_calories'] = intent.calorie_limit
+        if intent.max_carbs is not None:
+            filters['max_carbs'] = intent.max_carbs
+        if intent.min_protein is not None:
+            filters['min_protein'] = intent.min_protein
+        candidates = self.vector_service.search(search_query, top_k=pool_size, filters=filters or None)
+        if not candidates and filters and len(filters) > (1 if platform_filter else 0):
+            # Nothing satisfies the caps — refetch unfiltered so the honest
+            # closest-option fallback still has a pool to draw from.
+            base = {'platform': platform_filter} if platform_filter else None
+            candidates = self.vector_service.search(search_query, top_k=pool_size, filters=base)
         logger.info(f"Vector search returned {len(candidates)} candidates")
 
         if not candidates:
@@ -463,7 +489,10 @@ class EnhancedAISearchService:
                     terms.extend(DISH_SYNONYMS.get(n, (n,)))
                 if not any(t in text for t in terms):
                     return False
-            if (has_meal_word or named_dishes) and DRINK_DESSERT_RE.search(text):
+            wants_drink = any(w in query_lower_full for w in DRINK_QUERY_WORDS)
+            if (has_meal_word or named_dishes) and not wants_drink and BEVERAGE_RE.search(text):
+                return False
+            if has_meal_word and 'dessert' not in query_lower_full and SWEETS_RE.search(text):
                 return False
             return True
 
@@ -552,7 +581,8 @@ class EnhancedAISearchService:
                 explanation = ExplanationService.generate_explanation(
                     query, recipe, intent=intent, meets_constraints=True
                 )
-                explanation = f"Different dish than you searched — fits your other limits • {explanation}"
+                suffix = " — fits your other limits" if intent.has_any_constraint() else ""
+                explanation = f"Different dish than you searched{suffix} • {explanation}"
             else:
                 explanation = ExplanationService.generate_explanation(
                     query, recipe, intent=intent, meets_constraints=item_meets

@@ -392,7 +392,8 @@ def create_recipe_router(
                         interleaved.append(bucket.pop(0))
                     if not bucket:
                         buckets.remove(bucket)
-            nearby = interleaved
+            # Interleave chooses WHO makes the page; distance orders the page
+            nearby = sorted(interleaved, key=lambda r: r['distance_km'])
         return {'zipcode': zipcode, 'radius_km': radius_km, 'restaurants': nearby[:limit]}
 
     @router.post("/ask")
@@ -416,7 +417,7 @@ def create_recipe_router(
                 # qualifies, ground the answer in the closest options (their
                 # tags still gate any dietary claims) instead of telling the
                 # user the catalog is empty while attaching dishes.
-                grounding = qualified or results
+                grounding = (qualified or results)[:3]
                 context_items = [{
                     **r['recipe'].model_dump(),
                     'dietary_tags': r['recipe'].dietary_tags or [],
@@ -429,7 +430,7 @@ def create_recipe_router(
                     match_explanation=r['match_explanation'],
                     meets_constraints=r.get('meets_constraints', True),
                     constrained=r.get('constrained', False),
-                ) for r in (qualified or results)[:3]]
+                ) for r in grounding]
             except Exception as e:
                 logger.warning(f"Ask grounding search failed (continuing without): {e}")
 
