@@ -37,11 +37,11 @@ describe("buildOrderLink", () => {
     expect(copyable).toBe(true);
   });
 
-  test("doordash items get a store search link", () => {
+  test("doordash search carries dish + restaurant (Uber Eats parity)", () => {
     const { url } = buildOrderLink({
       name: "Harvest Bowl", restaurant_name: "sweetgreen", source_platform: "doordash",
     });
-    expect(url).toBe("https://www.doordash.com/search/store/sweetgreen");
+    expect(url).toBe("https://www.doordash.com/search/Harvest%20Bowl%20sweetgreen");
   });
 
   test("biterush is first-party: search deep link into the BiteRush app", () => {
@@ -83,6 +83,6 @@ describe("buildOrderLink", () => {
       // eslint-disable-next-line no-script-url
       order_url: "javascript:alert(1)",
     });
-    expect(url).toBe("https://www.doordash.com/search/store/R");
+    expect(url).toBe("https://www.doordash.com/search/Evil%20R");
   });
 });
