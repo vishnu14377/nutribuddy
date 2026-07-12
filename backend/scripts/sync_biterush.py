@@ -75,7 +75,8 @@ def main():
             'description': (food.get('description') or '')[:500],
             'restaurant_name': 'BiteRush Kitchen',
             'cuisine_type': (food.get('category') or None),
-            'image_url': f"{api_url}/images/{food.get('image')}" if food.get('image') else '',
+            'image_url': (food.get('image') if str(food.get('image', '')).startswith('http')
+                          else f"{api_url}/images/{food.get('image')}") if food.get('image') else '',
             # Partner DB stores legacy ambiguous-scale prices (149-379);
             # convert to demo USD (same /20 rule as the fixtures) until the
             # partner re-prices. Real single-dish USD prices pass through.

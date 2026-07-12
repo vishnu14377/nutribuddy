@@ -50,7 +50,8 @@ MEAT_WORDS_RE = re.compile(
     r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b|gumbo|milanese|schnitzel|'
     r'mortadella|soppressata|salami|bologna|capicola|prosciutto|pancetta|chorizo|'
     r'b\.m\.t|blt\b|cold cut|goat|bison|venison|oxtail|pork grind|chicharr|'
-    r'\bcarne\b|al pastor|gra.?prow|krapow|picadillo', re.IGNORECASE
+    r'\bcarne\b|al pastor|gra.?prow|krapow|picadillo|seafood|shellfish|'
+    r'crawfish|catfish|tilapia|\bcod\b|mahi|mussels?|eel\b|unagi', re.IGNORECASE
     # 'burger' counts as meat: real veggie burgers carry a vegetarian tag,
     # which is checked BEFORE this regex — an untagged ShackBurger must never
     # reach vegetarian results, even amber-flagged. Meat-implying dish names
@@ -95,7 +96,7 @@ DISH_NOUNS = (
 BEVERAGE_RE = re.compile(
     r'soda|cola|snapple|ramune|juice\b|lemonade|milkshakes?|shakes?\b|smoothie|'
     r'spindrift|sparkling|seltzer|\btea\b|\bwater\b|\d+\s*oz\b|sprite|'
-    r'soft drink|\blassi\b|kombucha|espresso|latte|cappuccino|slush|red bull|monster energy|gatorade|frappe', re.IGNORECASE
+    r'soft drink|\blassi\b|kombucha|espresso|latte|cappuccino|slush|red bull|refreshers?|\bdrinks?\b|coke\b|pepsi|frappuccino|monster energy|gatorade|frappe', re.IGNORECASE
 )
 # "Add Texas Toast" / sides are add-ons, not lunches
 ADDON_RE = re.compile(r'^add\s|\bside\b|^extra\s', re.IGNORECASE)
@@ -547,7 +548,7 @@ class EnhancedAISearchService:
                 terms = []
                 for n in named_dishes:
                     terms.extend(DISH_SYNONYMS.get(n, (n,)))
-                if not any(re.search(rf'\b{re.escape(t.strip())}\b', text) for t in terms):
+                if not any(re.search(rf'\b[\w-]*{re.escape(t.strip())}s?\b', text) for t in terms):
                     return False
             wants_drink = any(w in query_lower_full for w in DRINK_QUERY_WORDS)
             if (has_meal_word or named_dishes) and not wants_drink and BEVERAGE_RE.search(text):
@@ -585,6 +586,10 @@ class EnhancedAISearchService:
                 ranked = [(c, True, False) for c in self._rank_and_cap(green)]
             ranked += [(c, False, False) for c in
                        sorted(unverified, key=lambda c: c['score'], reverse=True)]
+            if has_meal_word or named_dishes:
+                # Beverages are never useful padding for a dish/meal query
+                mismatched = [c for c in mismatched if not BEVERAGE_RE.search(
+                    f"{c.get('metadata', {}).get('name', '')} {c.get('metadata', {}).get('description', '')}")]
             ranked += [(c, False, True) for c in
                        sorted(mismatched, key=lambda c: c['score'], reverse=True)]
             if (len([c for c in green if _is_orderable(c)]) < 3

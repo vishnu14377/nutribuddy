@@ -454,7 +454,22 @@ def create_recipe_router(
             except Exception as e:
                 logger.warning(f"Ask grounding search failed (continuing without): {e}")
 
+        # Value questions get deterministic math — the model must cite it,
+        # not re-derive it (round 11: it recommended 4.29 g/$ over 4.40 g/$)
+        if any(t in query.question.lower() for t in ('per dollar', 'for the money', 'best value', 'cheapest')):
+            priced = [(i, (i.get('estimated_protein') or 0) / i['price'])
+                      for i in context_items if i.get('price') and i.get('currency') == 'USD']
+            if priced:
+                best = max(priced, key=lambda x: x[1])
+                context_items = [dict(i, note=f"{v:.2f}g protein per dollar" +
+                                      (' — BEST VALUE among these' if i is best[0] else ''))
+                                 for i, v in priced]
         reply = openai_service.answer_food_question(query.question, context_items)
+        # Prose and cards must agree: the dish named in the answer leads results
+        if reply['on_topic'] and supporting:
+            named = [r for r in supporting if r.recipe.name.lower() in reply['answer'].lower()]
+            others = [r for r in supporting if r not in named]
+            supporting = named + others
         return {
             'answer': reply['answer'],
             'on_topic': reply['on_topic'],

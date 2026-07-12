@@ -470,11 +470,15 @@ class TestSearchBehavior:
         assert results[0]['meets_constraints'] is True
 
     def test_drinks_never_fit_meal_queries(self):
+        # Round-11: beverages are excluded from meal queries entirely — not
+        # even amber padding (a soda is not a 'closest' dinner)
         candidates = [
             make_candidate('Ramune Soda', calories=90, score=0.4, description='japanese soda'),
         ]
         results = run_search(candidates, 'light dinner under 300 calories')
-        assert results[0]['meets_constraints'] is False
+        assert all('soda' not in r['recipe'].name.lower() or not r['meets_constraints']
+                   for r in results)
+        assert results == [] or results[0]['meets_constraints'] is False
 
     def test_unknown_restaurant_returns_empty_not_global(self):
         candidates = [make_candidate('Burger', score=0.6)]

@@ -88,9 +88,17 @@ class SearchQuery(BaseModel):
     - "30g protein low carb"
     """
 
-    # Bounded so an oversized paste 422s cleanly instead of blowing up inside
-    # the embedding call as a raw 500.
-    query: str = Field(min_length=1, max_length=1000)
+    # Verbose plain-English goals are the product's whole pitch: trim and
+    # truncate to embedding-safe length instead of rejecting a paragraph.
+    query: str = Field(min_length=1, max_length=8000)
+
+    @field_validator('query')
+    @classmethod
+    def trim_and_bound(cls, v):
+        v = (v or '').strip()
+        if not v:
+            raise ValueError('query must not be empty')
+        return v[:1000]
     filters: Optional[dict] = {}
     restaurant_name: Optional[str] = None   # narrow results to a specific restaurant
     source_platform: Optional[str] = None   # narrow results to one delivery platform

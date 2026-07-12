@@ -1,6 +1,6 @@
 [
   {
-    "id": "f88882c2-3761-4f1a-a791-3d37baf2d988",
+    "id": "04e82ca7-8986-4bdc-bfd6-7f2364662db3",
     "name": "Grilled Chicken Power Bowl",
     "description": "Char-grilled chicken breast, quinoa, broccoli, lemon-herb drizzle.",
     "ingredients": [],
@@ -14,9 +14,9 @@
     ],
     "estimated_calories": 550,
     "estimated_protein": 45.0,
-    "estimated_carbs": 45.0,
-    "estimated_fat": 15.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600",
+    "estimated_carbs": 40.0,
+    "estimated_fat": 20.0,
+    "image_url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -31,7 +31,7 @@
     "postal_code": null
   },
   {
-    "id": "22976d4c-a4fd-4915-9c56-a99f1a5ef6a7",
+    "id": "26ac4c0a-d435-4b98-a8b3-983acf6f9802",
     "name": "Double Beef Smash Burger",
     "description": "Two seared beef patties, cheddar, pickles, house sauce, brioche bun.",
     "ingredients": [],
@@ -43,10 +43,10 @@
       "high-protein"
     ],
     "estimated_calories": 950,
-    "estimated_protein": 55.0,
-    "estimated_carbs": 45.0,
+    "estimated_protein": 50.0,
+    "estimated_carbs": 60.0,
     "estimated_fat": 60.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600",
+    "image_url": "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -61,7 +61,7 @@
     "postal_code": null
   },
   {
-    "id": "18504499-8897-494e-ba71-7899d8afb63a",
+    "id": "835d113b-aada-4ca2-a50d-9a297a17abf9",
     "name": "Keto Steak & Eggs",
     "description": "Sirloin steak, two fried eggs, avocado, saut\u00e9ed spinach. Zero grains.",
     "ingredients": [],
@@ -72,14 +72,14 @@
     "dietary_tags": [
       "high-protein",
       "low-carb",
-      "gluten-free",
-      "keto-friendly"
+      "keto-friendly",
+      "gluten-free"
     ],
     "estimated_calories": 850,
     "estimated_protein": 65.0,
     "estimated_carbs": 10.0,
     "estimated_fat": 60.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1600891964092-4316c288032e?w=600",
+    "image_url": "https://images.unsplash.com/photo-1600891964092-4316c288032e?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -94,7 +94,7 @@
     "postal_code": null
   },
   {
-    "id": "8452ee8d-8e83-4494-856f-93ba3ff3a5b7",
+    "id": "b9fc831c-893f-4c3d-966a-271345155f8a",
     "name": "Garden Greek Salad",
     "description": "Cucumber, tomato, olives and feta with extra-virgin olive oil.",
     "ingredients": [],
@@ -107,10 +107,10 @@
       "gluten-free"
     ],
     "estimated_calories": 350,
-    "estimated_protein": 8.0,
-    "estimated_carbs": 15.0,
-    "estimated_fat": 30.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600",
+    "estimated_protein": 10.0,
+    "estimated_carbs": 20.0,
+    "estimated_fat": 28.0,
+    "image_url": "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -125,7 +125,7 @@
     "postal_code": null
   },
   {
-    "id": "033232ce-1727-4906-8131-bf89ee21d3c3",
+    "id": "21a6d343-9034-4974-864a-3ebd053022fb",
     "name": "Salmon Teriyaki Plate",
     "description": "Pan-seared salmon, teriyaki glaze, steamed rice, edamame.",
     "ingredients": [],
@@ -136,11 +136,11 @@
     "dietary_tags": [
       "high-protein"
     ],
-    "estimated_calories": 850,
-    "estimated_protein": 45.0,
-    "estimated_carbs": 85.0,
-    "estimated_fat": 30.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600",
+    "estimated_calories": 950,
+    "estimated_protein": 55.0,
+    "estimated_carbs": 95.0,
+    "estimated_fat": 35.0,
+    "image_url": "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -155,7 +155,7 @@
     "postal_code": null
   },
   {
-    "id": "bfc89744-b2bc-49f9-a811-31922c4bb1f0",
+    "id": "b89012ee-29fb-490d-93a7-0f50d618bb51",
     "name": "Paneer Tikka Skewers",
     "description": "Smoky marinated paneer with peppers, onion, mint chutney.",
     "ingredients": [],
@@ -167,11 +167,11 @@
       "vegetarian",
       "gluten-free"
     ],
-    "estimated_calories": 650,
+    "estimated_calories": 600,
     "estimated_protein": 30.0,
     "estimated_carbs": 40.0,
-    "estimated_fat": 40.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=600",
+    "estimated_fat": 35.0,
+    "image_url": "https://images.unsplash.com/photo-1567188040759-fb8a883dc6d8?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -186,7 +186,7 @@
     "postal_code": null
   },
   {
-    "id": "16a113aa-14c2-43e2-9d29-4d903c988568",
+    "id": "fa471f91-08e5-4858-ac53-129c8b3dc616",
     "name": "Vegan Buddha Bowl",
     "description": "Roasted chickpeas, sweet potato, kale, tahini over brown rice.",
     "ingredients": [],
@@ -202,7 +202,7 @@
     "estimated_protein": 20.0,
     "estimated_carbs": 90.0,
     "estimated_fat": 20.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600",
+    "image_url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -217,7 +217,7 @@
     "postal_code": null
   },
   {
-    "id": "ec14280f-3efd-4e54-8bfd-6372ee3d80f8",
+    "id": "7984d4b1-a87e-4cc5-b57c-a5431ac5b058",
     "name": "Margherita Pizza",
     "description": "Wood-fired thin crust, San Marzano tomato, fresh mozzarella, basil.",
     "ingredients": [],
@@ -232,7 +232,7 @@
     "estimated_protein": 80.0,
     "estimated_carbs": 220.0,
     "estimated_fat": 90.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=600",
+    "image_url": "https://images.unsplash.com/photo-1604382354936-07c5d9983bd3?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -247,7 +247,7 @@
     "postal_code": null
   },
   {
-    "id": "03d3375c-4a61-4ca7-8e6f-9488551a79e9",
+    "id": "51e51df2-1ca8-44d9-9654-891f0e9b017a",
     "name": "Spicy Chicken Wings (10 pc)",
     "description": "Crispy double-fried wings tossed in buffalo glaze.",
     "ingredients": [],
@@ -260,9 +260,9 @@
     ],
     "estimated_calories": 950,
     "estimated_protein": 70.0,
-    "estimated_carbs": 30.0,
+    "estimated_carbs": 40.0,
     "estimated_fat": 60.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1527477396000-e27163b481c2?w=600",
+    "image_url": "https://images.unsplash.com/photo-1527477396000-e27163b481c2?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -277,7 +277,7 @@
     "postal_code": null
   },
   {
-    "id": "e16c189d-b996-4116-948f-e2e65918ab34",
+    "id": "e7cf9689-e290-4d12-ad75-4023aff517d4",
     "name": "Avocado Toast",
     "description": "Smashed avocado on multigrain sourdough with chili flakes and lime.",
     "ingredients": [],
@@ -290,9 +290,9 @@
     ],
     "estimated_calories": 450,
     "estimated_protein": 9.0,
-    "estimated_carbs": 45.0,
-    "estimated_fat": 25.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1588137378633-dea1336ce1e2?w=600",
+    "estimated_carbs": 50.0,
+    "estimated_fat": 24.0,
+    "image_url": "https://images.unsplash.com/photo-1588137378633-dea1336ce1e2?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -307,7 +307,7 @@
     "postal_code": null
   },
   {
-    "id": "fe8bf502-73d4-4212-8c2c-4e79b337da9d",
+    "id": "3f6bfe21-0c0a-4502-bf94-ccc4810524ae",
     "name": "Protein Mass Gainer Shake",
     "description": "Banana, peanut butter, whey and oats blended thick for bulking.",
     "ingredients": [],
@@ -320,10 +320,10 @@
       "vegetarian"
     ],
     "estimated_calories": 850,
-    "estimated_protein": 45.0,
+    "estimated_protein": 40.0,
     "estimated_carbs": 85.0,
     "estimated_fat": 35.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=600",
+    "image_url": "https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -338,7 +338,7 @@
     "postal_code": null
   },
   {
-    "id": "8d1d59dc-c4d9-4e32-9df3-9e99d572a1bb",
+    "id": "7cacd65c-b20f-4604-aea3-949abfa25b24",
     "name": "Zucchini Noodle Primavera",
     "description": "Spiralized zucchini, cherry tomatoes, basil pesto. Low carb.",
     "ingredients": [],
@@ -355,7 +355,7 @@
     "estimated_protein": 10.0,
     "estimated_carbs": 20.0,
     "estimated_fat": 25.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=600",
+    "image_url": "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -370,7 +370,7 @@
     "postal_code": null
   },
   {
-    "id": "99722f51-410b-4f59-95d2-7d24c35034c6",
+    "id": "d64be8d5-55da-4753-bfef-b88be682de30",
     "name": "Pulled Pork Mac & Cheese",
     "description": "Slow-smoked pork over creamy three-cheese macaroni.",
     "ingredients": [],
@@ -382,10 +382,10 @@
       "high-protein"
     ],
     "estimated_calories": 950,
-    "estimated_protein": 45.0,
-    "estimated_carbs": 75.0,
+    "estimated_protein": 40.0,
+    "estimated_carbs": 80.0,
     "estimated_fat": 50.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1543339494-b4cd4f7ba686?w=600",
+    "image_url": "https://images.unsplash.com/photo-1543339494-b4cd4f7ba686?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -400,7 +400,7 @@
     "postal_code": null
   },
   {
-    "id": "014345a1-72b9-41c1-9bdb-0a305b0e3e06",
+    "id": "b8b3b4b7-17fd-4339-aca3-ef9757c6c908",
     "name": "Tofu Stir-Fry",
     "description": "Crispy tofu with bell peppers, snap peas, ginger-soy sauce.",
     "ingredients": [],
@@ -412,11 +412,11 @@
       "vegetarian",
       "vegan"
     ],
-    "estimated_calories": 600,
+    "estimated_calories": 550,
     "estimated_protein": 25.0,
     "estimated_carbs": 60.0,
-    "estimated_fat": 25.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1512058564366-18510be2db19?w=600",
+    "estimated_fat": 20.0,
+    "image_url": "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -431,7 +431,7 @@
     "postal_code": null
   },
   {
-    "id": "292ac95b-cdb9-47f2-a0fe-5947ecef146b",
+    "id": "a7018096-61a0-4034-8225-d37101dc6559",
     "name": "Egg White Veggie Omelette",
     "description": "Fluffy egg whites with spinach, mushroom and tomato. Light and lean.",
     "ingredients": [],
@@ -447,8 +447,8 @@
     "estimated_calories": 250,
     "estimated_protein": 25.0,
     "estimated_carbs": 10.0,
-    "estimated_fat": 8.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1525351484163-7529414344d8?w=600",
+    "estimated_fat": 5.0,
+    "image_url": "https://images.unsplash.com/photo-1525351484163-7529414344d8?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -463,7 +463,7 @@
     "postal_code": null
   },
   {
-    "id": "9329a9cd-9fe9-4150-9cec-42fd99f9e064",
+    "id": "17b4cee1-1e2c-482a-b434-611e080588db",
     "name": "Quinoa Black Bean Salad",
     "description": "Quinoa, black beans, corn, avocado and lime vinaigrette.",
     "ingredients": [],
@@ -479,7 +479,7 @@
     "estimated_protein": 15.0,
     "estimated_carbs": 70.0,
     "estimated_fat": 20.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=600",
+    "image_url": "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -494,7 +494,7 @@
     "postal_code": null
   },
   {
-    "id": "4eefabf2-c1a5-48dd-bfb8-227dd6046c43",
+    "id": "d990752a-004e-42b8-a539-9477162bf76b",
     "name": "Lamb Seekh Kebab",
     "description": "Minced lamb skewers with warm spices, grilled over charcoal.",
     "ingredients": [],
@@ -507,11 +507,11 @@
       "low-carb",
       "gluten-free"
     ],
-    "estimated_calories": 700,
-    "estimated_protein": 40.0,
+    "estimated_calories": 800,
+    "estimated_protein": 50.0,
     "estimated_carbs": 10.0,
-    "estimated_fat": 55.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=600",
+    "estimated_fat": 60.0,
+    "image_url": "https://images.unsplash.com/photo-1599487488170-d11ec9c172f0?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
@@ -526,7 +526,7 @@
     "postal_code": null
   },
   {
-    "id": "af95336f-8205-4c59-99dc-5dce9a352806",
+    "id": "b8265e68-3437-4d78-b44c-028207aff028",
     "name": "Berry Greek Yogurt Parfait",
     "description": "Thick Greek yogurt layered with mixed berries and honey granola.",
     "ingredients": [],
@@ -538,10 +538,10 @@
       "vegetarian"
     ],
     "estimated_calories": 450,
-    "estimated_protein": 20.0,
-    "estimated_carbs": 60.0,
-    "estimated_fat": 15.0,
-    "image_url": "https://ef5a-98-123-249-186.ngrok-free.app/images/https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600",
+    "estimated_protein": 15.0,
+    "estimated_carbs": 65.0,
+    "estimated_fat": 12.0,
+    "image_url": "https://images.unsplash.com/photo-1488477181946-6428a0291777?w=600",
     "restaurant_name": "BiteRush Kitchen",
     "delivery_time": null,
     "rating": 0.0,
