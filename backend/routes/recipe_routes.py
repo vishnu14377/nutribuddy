@@ -300,6 +300,14 @@ def create_recipe_router(
                     detail=f"Unknown restaurant '{query.restaurant_name}'."
                            + (f" Did you mean: {', '.join(close)}?" if close else "")
                 )
+        user_location = None
+        if query.zipcode:
+            try:
+                user_location = geocode_zip(query.zipcode)
+            except InvalidZipcode as e:
+                raise HTTPException(status_code=422, detail=str(e))
+            except GeocodeUnavailable as e:
+                raise HTTPException(status_code=502, detail=str(e))
         if enhanced_search:
             try:
                 results = enhanced_search.search(
@@ -307,6 +315,8 @@ def create_recipe_router(
                     top_k=10,
                     restaurant_filter=query.restaurant_name,
                     platform_filter=query.source_platform,
+                    user_location=user_location,
+                    radius_km=query.radius_km,
                 )
             except Exception as e:
                 # Never surface a bare 500 from the search path
@@ -318,6 +328,7 @@ def create_recipe_router(
                 match_explanation=r['match_explanation'],
                 meets_constraints=r.get('meets_constraints', True),
                 constrained=r.get('constrained', False),
+                distance_km=r.get('distance_km'),
             ) for r in results]
 
         filters = {'platform': query.source_platform} if query.source_platform else None
@@ -411,7 +422,16 @@ def create_recipe_router(
         supporting = []
         if enhanced_search:
             try:
-                results = enhanced_search.search(query.question, top_k=5)
+                q_lower = query.question.lower()
+                ask_platform = None
+                for token, plat in (('doordash', 'doordash'), ('dash pass', 'doordash'),
+                                    ('dashpass', 'doordash'), ('uber eats', 'ubereats'),
+                                    ('ubereats', 'ubereats'), ('biterush', 'biterush')):
+                    if token in q_lower:
+                        ask_platform = plat
+                        break
+                results = enhanced_search.search(query.question, top_k=8,
+                                                 platform_filter=ask_platform)
                 qualified = [r for r in results if r.get('meets_constraints', True)]
                 # Prose and results[] must never diverge: when nothing fully
                 # qualifies, ground the answer in the closest options (their

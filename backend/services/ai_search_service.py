@@ -49,7 +49,8 @@ MEAT_WORDS_RE = re.compile(
     r'wings?\b|carnitas|pastrami|prosciutto|anchov|nuggets?\b|duck|veal|lobster|'
     r'calamari|squid|oysters?\b|clams?\b|scallops?\b|burgers?\b|gumbo|milanese|schnitzel|'
     r'mortadella|soppressata|salami|bologna|capicola|prosciutto|pancetta|chorizo|'
-    r'b\.m\.t|blt\b|cold cut|goat|bison|venison|oxtail|pork grind|chicharr', re.IGNORECASE
+    r'b\.m\.t|blt\b|cold cut|goat|bison|venison|oxtail|pork grind|chicharr|'
+    r'\bcarne\b|al pastor|gra.?prow|krapow|picadillo', re.IGNORECASE
     # 'burger' counts as meat: real veggie burgers carry a vegetarian tag,
     # which is checked BEFORE this regex — an untagged ShackBurger must never
     # reach vegetarian results, even amber-flagged. Meat-implying dish names
@@ -94,7 +95,7 @@ DISH_NOUNS = (
 BEVERAGE_RE = re.compile(
     r'soda|cola|snapple|ramune|juice\b|lemonade|milkshakes?|shakes?\b|smoothie|'
     r'spindrift|sparkling|seltzer|\btea\b|\bwater\b|\d+\s*oz\b|sprite|'
-    r'soft drink|lassi|kombucha|espresso|latte|cappuccino|slush|red bull|monster energy|gatorade|frappe', re.IGNORECASE
+    r'soft drink|\blassi\b|kombucha|espresso|latte|cappuccino|slush|red bull|monster energy|gatorade|frappe', re.IGNORECASE
 )
 # "Add Texas Toast" / sides are add-ons, not lunches
 ADDON_RE = re.compile(r'^add\s|\bside\b|^extra\s', re.IGNORECASE)
@@ -131,7 +132,7 @@ VEGETARIAN_DISH_TERMS = (
 # found it imposing a phantom 500-cal cap that overrode users' stated targets.
 LOW_CAL_INTENT_TERMS = ('low cal', 'low-cal', 'light', 'healthy')
 HIGH_FAT_TERMS = ('high fat', 'high-fat', 'alta en grasa')
-VALUE_TERMS = ('cheap', 'budget', 'best value', 'affordable', 'value for money', 'good value')
+VALUE_TERMS = ('cheap', 'budget', 'best value', 'affordable', 'value for money', 'good value', 'for the money', 'per dollar')
 
 # Default threshold when the user says "high protein" without a number.
 DEFAULT_MIN_PROTEIN = 30
@@ -405,6 +406,8 @@ class EnhancedAISearchService:
         top_k: int = 10,
         restaurant_filter: Optional[str] = None,
         platform_filter: Optional[str] = None,
+        user_location: Optional[tuple] = None,
+        radius_km: float = 40,
     ) -> List[Dict[str, Any]]:
         """Search with constraint filtering. No LLM calls at query time.
 
@@ -592,6 +595,16 @@ class EnhancedAISearchService:
             if not recipe_doc:
                 continue
             recipe = Recipe(**recipe_doc)
+
+            # Geo honesty: a 'Fits your search' card must never hand off to a
+            # store 2,800 miles away. Items without coordinates are kept.
+            distance_km = None
+            if user_location and recipe.latitude is not None and recipe.longitude is not None:
+                from services.location_service import haversine_km
+                distance_km = round(haversine_km(
+                    user_location[0], user_location[1], recipe.latitude, recipe.longitude), 1)
+                if distance_km > radius_km:
+                    continue
             item_meets = base_meets
             unverified_diet = False
 
@@ -655,6 +668,7 @@ class EnhancedAISearchService:
                 'match_explanation': explanation,
                 'meets_constraints': item_meets,
                 'constrained': intent.has_any_constraint(),
+                'distance_km': distance_km,
             })
 
         logger.info(f"Returning {len(final_results)} results")
@@ -773,7 +787,17 @@ class EnhancedAISearchService:
         # Items missing a limit by >50% are noise, not fallbacks (an 80g-carb
         # item under a 15g keto cap helps nobody) — better a shorter list
         near = [c for c in pool if shortfall(c) <= 0.5] or pool[:2]
-        return sorted(near, key=lambda c: (shortfall(c), -c['score']))[:5]
+
+        def tagged_ok(c):
+            tags = (c.get('metadata', {}).get('dietary_tags', '') or '').lower()
+            if intent.vegan:
+                return 'vegan' in tags
+            if intent.vegetarian:
+                return 'vegetarian' in tags or 'vegan' in tags
+            return True
+
+        # Diet-verified items always precede unverified ones in fallbacks
+        return sorted(near, key=lambda c: (not tagged_ok(c), shortfall(c), -c['score']))[:5]
 
 
 class ExplanationService:
@@ -833,9 +857,10 @@ class ExplanationService:
 
         # High protein + low carb
         if intent is not None and intent.min_protein is not None and intent.max_carbs is not None:
-            ratio = protein / max(carbs, 1)
-            if protein > carbs:
-                parts.append(f"Strong protein-to-carb ratio ({ratio:.1f}:1)")
+            if carbs <= 0:
+                parts.append("0g carbs")
+            elif protein > carbs:
+                parts.append(f"Strong protein-to-carb ratio ({protein / carbs:.1f}:1)")
             parts.append(f"{protein:g}g protein with {carbs:g}g carbs")
             if 'keto-friendly' in (t.lower() for t in (recipe.dietary_tags or [])):
                 parts.append("keto-friendly")

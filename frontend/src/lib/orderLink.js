@@ -28,7 +28,7 @@ export const PLATFORMS = {
     badgeClass: "bg-red-100 text-red-700",
     // General search carries dish + restaurant (Uber Eats parity); the
     // copyable term remains the floor.
-    buildUrl: (term) => `https://www.doordash.com/search/${encodeURIComponent(term)}`,
+    buildUrl: (term) => `https://www.doordash.com/search/store/${encodeURIComponent(term)}/`,
   },
   biterush: {
     label: "BiteRush",

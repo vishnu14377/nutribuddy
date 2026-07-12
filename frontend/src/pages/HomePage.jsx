@@ -70,6 +70,7 @@ export default function HomePage() {
       const payload = { query: q, filters: {} };
       if (platform) payload.source_platform = platform;
       if (restaurant) payload.restaurant_name = restaurant;
+      if (/^\d{5}$/.test(zipcode.trim())) payload.zipcode = zipcode.trim();
 
       const { data } = await axios.post(`${NUTRIBUDDY_API}/search`, payload);
       setSearchResults(data);

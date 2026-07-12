@@ -94,6 +94,8 @@ class SearchQuery(BaseModel):
     filters: Optional[dict] = {}
     restaurant_name: Optional[str] = None   # narrow results to a specific restaurant
     source_platform: Optional[str] = None   # narrow results to one delivery platform
+    zipcode: Optional[str] = None           # only deliverable results near here
+    radius_km: float = 40
 
     @field_validator('source_platform')
     @classmethod
@@ -118,3 +120,5 @@ class SearchResult(BaseModel):
     # False when the query had no parseable constraints — the UI must not
     # assert "Fits your search" when there was nothing to fit.
     constrained: bool = False
+    # Distance from the user's zipcode, when one was provided
+    distance_km: Optional[float] = None
