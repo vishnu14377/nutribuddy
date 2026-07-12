@@ -5,7 +5,12 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 const api = axios.create({
   baseURL: `${BASE_URL}/api`,
   timeout: 15000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    // ngrok free serves an HTML interstitial to browser requests without
+    // this header — the app would hang on 'Finding fresh details...'
+    'ngrok-skip-browser-warning': 'true',
+  },
 });
 
 // Request interceptor — attach token
