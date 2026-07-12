@@ -76,7 +76,11 @@ def main():
             'restaurant_name': 'BiteRush Kitchen',
             'cuisine_type': (food.get('category') or None),
             'image_url': f"{api_url}/images/{food.get('image')}" if food.get('image') else '',
-            'price': round(float(food.get('price') or 0), 2),
+            # Partner DB stores legacy ambiguous-scale prices (149-379);
+            # convert to demo USD (same /20 rule as the fixtures) until the
+            # partner re-prices. Real single-dish USD prices pass through.
+            'price': (lambda v: round(max(4.99, v / 20), 2) if v > 100 else round(v, 2))(
+                float(food.get('price') or 0)),
             'currency': 'USD',
             'source_platform': 'biterush',
             'order_url': f"{front_url}/food/{food_id}" if food_id else None,
