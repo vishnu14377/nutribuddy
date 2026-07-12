@@ -547,7 +547,7 @@ class EnhancedAISearchService:
                 terms = []
                 for n in named_dishes:
                     terms.extend(DISH_SYNONYMS.get(n, (n,)))
-                if not any(re.search(rf'\b{re.escape(t.strip())}', text) for t in terms):
+                if not any(re.search(rf'\b{re.escape(t.strip())}\b', text) for t in terms):
                     return False
             wants_drink = any(w in query_lower_full for w in DRINK_QUERY_WORDS)
             if (has_meal_word or named_dishes) and not wants_drink and BEVERAGE_RE.search(text):
