@@ -105,6 +105,18 @@ SWEETS_RE = re.compile(
 DRINK_QUERY_WORDS = ('shake', 'smoothie', 'drink', 'juice', 'coffee', 'tea', 'latte')
 MEAL_WORDS = ('breakfast', 'lunch', 'dinner', 'meal', 'entree', 'snack')
 
+# Dishes whose classic recipe hides animal ingredients: a vegetarian tag on
+# these is only trustworthy if the description explicitly clears the risk.
+HIDDEN_ANIMAL_RISK = {
+    'caesar': 'anchovy (classic Caesar dressing)',
+    'pad thai': 'fish sauce',
+    'panang': 'fish sauce',
+    'green curry': 'fish sauce',
+    'kimchi': 'fish sauce/shrimp paste',
+    'pesto': 'parmesan (animal rennet)',
+    'refried beans': 'lard',
+}
+
 # Bare 'protein' is a topic, not a numeric ask — only phrases set the 30g gate
 PROTEIN_TERMS = (
     'high protein', 'protein rich', 'protein-rich', 'high-protein',
@@ -151,6 +163,7 @@ class QueryIntent:
     """Structured constraints parsed from a natural-language query."""
 
     calorie_limit: Optional[int] = None
+    min_calories: Optional[int] = None
     max_carbs: Optional[float] = None
     min_protein: Optional[float] = None
     min_fat: Optional[float] = None
@@ -165,7 +178,8 @@ class QueryIntent:
 
     def has_nutrition_constraint(self) -> bool:
         return any(v is not None for v in (
-            self.calorie_limit, self.max_carbs, self.min_protein, self.min_fat, self.max_fat
+            self.calorie_limit, self.min_calories, self.max_carbs,
+            self.min_protein, self.min_fat, self.max_fat
         )) or self.vegetarian or self.vegan
 
     def has_any_constraint(self) -> bool:
@@ -179,6 +193,8 @@ class QueryIntent:
         labels = []
         if self.calorie_limit is not None:
             labels.append(f"under {self.calorie_limit} cal")
+        if self.min_calories is not None:
+            labels.append(f"over {self.min_calories} cal")
         if self.max_carbs is not None:
             labels.append(f"≤{self.max_carbs:g}g carbs")
         if self.min_protein is not None:
@@ -313,6 +329,12 @@ def parse_intent(query: str) -> QueryIntent:
     if m and int(m.group(1)) > int(m.group(2)):
         intent.calorie_limit = int(m.group(1)) - int(m.group(2))
 
+    # Calorie FLOOR first ('over/at least N calories' — bulkers exist too)
+    m = re.search(r'(?:over|above|more\s*than|at\s*least|minimum(?:\s*of)?)\s*(\d+)\s*k?cal(?:orie)?s?', work)
+    if m and int(m.group(1)) > 0:
+        intent.min_calories = int(m.group(1))
+        work = work.replace(m.group(0), ' ')
+
     calorie_patterns = [
         r'(\d+)\s*k?cal(?:orie)?s?\s*(?:left|remaining|to\s*spare)',
         r'(?:only\s*)?have\s*(\d+)\s*k?cal(?:orie)?s?\b',
@@ -343,7 +365,9 @@ def parse_intent(query: str) -> QueryIntent:
     # Only infer a generic light-meal cap when the user gave NO calorie figure
     if intent.calorie_limit is None and not intent.impossible \
             and not re.search(r'\d+\s*k?cal', work):
-        if any(term in work for term in LOW_CAL_INTENT_TERMS):
+        if any(term in work for term in ('low cal', 'low-cal', 'light')):
+            intent.calorie_limit = 400   # 'light' means light — 490 isn't
+        elif 'healthy' in work:
             intent.calorie_limit = GENERAL_LOW_CAL_LIMIT
 
     # Zero-valued limits are impossible asks, never divisors ("under $0",
@@ -487,6 +511,8 @@ class EnhancedAISearchService:
                 for row in self.db_service.get_recipes_by_tag(tag, limit=40):
                     if row['id'] in seen:
                         continue
+                    if platform_filter and (row.get('source_platform') or '') != platform_filter:
+                        continue
                     pool.append({'id': row['id'], 'score': 0.32, 'metadata': {
                         'name': row.get('name', ''), 'description': row.get('description') or '',
                         'calories': row.get('estimated_calories') or 0,
@@ -521,7 +547,7 @@ class EnhancedAISearchService:
                 terms = []
                 for n in named_dishes:
                     terms.extend(DISH_SYNONYMS.get(n, (n,)))
-                if not any(t in text for t in terms):
+                if not any(re.search(rf'\b{re.escape(t.strip())}', text) for t in terms):
                     return False
             wants_drink = any(w in query_lower_full for w in DRINK_QUERY_WORDS)
             if (has_meal_word or named_dishes) and not wants_drink and BEVERAGE_RE.search(text):
@@ -613,6 +639,17 @@ class EnhancedAISearchService:
             if intent.vegetarian or intent.vegan:
                 tags = ' '.join(recipe.dietary_tags or []).lower()
                 tagged = ('vegan' in tags) if intent.vegan else ('vegetarian' in tags or 'vegan' in tags)
+                if tagged:
+                    # A tag on a hidden-risk dish (Caesar/anchovy...) is only
+                    # confident when the description clears the risk
+                    name_l = recipe.name.lower()
+                    desc_l = (recipe.description or '').lower()
+                    for risk_dish, risk_ing in HIDDEN_ANIMAL_RISK.items():
+                        if risk_dish in name_l and risk_ing.split(' ')[0] not in desc_l \
+                                and 'vegan' not in desc_l and 'vegetarian' not in desc_l:
+                            item_meets = False
+                            unverified_diet = True
+                            break
                 if not tagged:
                     if intent.vegan or MEAT_WORDS_RE.search(f"{recipe.name} {recipe.description or ''}"):
                         logger.warning(f"Diet-safety drop: {recipe.name} (untagged, meat words in description)")
@@ -717,8 +754,11 @@ class EnhancedAISearchService:
         currency = md.get('currency', '') or ''
         tags = (md.get('dietary_tags', '') or '').lower()
 
-        # Multi-serving items never belong in single-meal nutrition queries
-        if intent.has_nutrition_constraint():
+        # Multi-serving items never belong in single-meal nutrition queries —
+        # unless the user explicitly asked for something huge (calorie floor
+        # or a 100g+ protein target means trays are the point)
+        wants_huge = intent.min_calories is not None or (intent.min_protein or 0) >= 100
+        if intent.has_nutrition_constraint() and not wants_huge:
             if MULTI_SERVING_NAME_RE.search(name):
                 return False
             if calories > SINGLE_MEAL_CALORIE_CEILING and intent.calorie_limit is None:
@@ -734,6 +774,8 @@ class EnhancedAISearchService:
                 return False
 
         if intent.calorie_limit is not None and not calories < intent.calorie_limit:
+            return False
+        if intent.min_calories is not None and calories < intent.min_calories:
             return False
         if intent.max_carbs is not None and carbs > intent.max_carbs:
             return False

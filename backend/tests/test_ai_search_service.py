@@ -36,9 +36,16 @@ class TestCalorieParsing:
     def test_extracts_explicit_limits(self, query, expected):
         assert parse_intent(query).calorie_limit == expected
 
-    @pytest.mark.parametrize('query', ['low cal lunch', 'light dinner', 'healthy bowl'])
-    def test_general_low_calorie_intent_defaults_to_500(self, query):
-        assert parse_intent(query).calorie_limit == 500
+    def test_light_means_400_healthy_means_500(self):
+        # Round-10: a 490-cal dish green-badged as 'light' broke trust
+        assert parse_intent('low cal lunch').calorie_limit == 400
+        assert parse_intent('light dinner').calorie_limit == 400
+        assert parse_intent('healthy bowl').calorie_limit == 500
+
+    def test_calorie_floor_parsed(self):
+        # Round-10: 'over 9000 calories' was silently dropped
+        assert parse_intent('meal over 3000 calories').min_calories == 3000
+        assert parse_intent('at least 800 calories').min_calories == 800
 
     def test_diet_is_a_diet_type_word_not_a_calorie_cap(self):
         # Round-5: 'keto diet ... around 700 calories' was capped at 500
@@ -456,7 +463,7 @@ class TestSearchBehavior:
 
     def test_dish_type_gate_passes_matching_dish(self):
         candidates = [
-            make_candidate('Keto Crust Pizza', calories=450, carbs=12, score=0.5,
+            make_candidate('Keto Crust Pizza', calories=380, carbs=12, score=0.5,
                            description='cauliflower crust pizza', tags='keto-friendly'),
         ]
         results = run_search(candidates, 'low calorie pizza')
